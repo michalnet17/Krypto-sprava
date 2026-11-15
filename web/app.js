@@ -593,7 +593,7 @@
       ${REPO ? `<label class="row"><input type="checkbox" id="updChk" ${state.settings.updateCheck !== false ? 'checked' : ''}> Upozornit na novou verzi (1× denně se zeptá GitHubu na číslo poslední verze – nic se neodesílá)</label>
       <div class="row2"><button class="btn sec small" id="reportBug">Nahlásit chybu / nápad</button> <span class="small mut">otevře hlášení na GitHubu s verzí a logem – adresy se automaticky zamaskují</span></div>
       <div class="row2"><button class="btn sec small" id="updNow">Zkontrolovat teď</button> <span class="small mut">${state.update && state.update.at ? 'naposledy ' + new Date(state.update.at).toLocaleString('cs-CZ') + (state.update.latest ? ' · poslední verze ' + esc(state.update.latest) : '') : ''}</span></div>` : '<p class="small mut">Kontrola nových verzí není v této kopii nastavená.</p>'}</div>
-    <div class="card"><h3>Podpořit vývoj</h3>
+    <div class="card" id="donateCard"><h3>Podpořit vývoj</h3>
       <div class="donate">${donateAddr() === DONATE_BUILTIN ? '<img src="donate.svg" alt="QR kód adresy pro dar" width="132" height="132">' : ''}
       <div><p class="small">Appka je zdarma. Pokud ti pomáhá, můžeš autorovi poslat libovolnou částku <b>ADA</b> (Cardano) na adresu:</p>
       <div class="mono small" style="word-break:break-all">${donateAddr()}</div>
@@ -635,7 +635,7 @@
     if ((allMode && tab !== 'prehled' && tab !== 'nastaveni') || (tab === 'odmeny' && !hasRw)) tab = 'prehled';
     const v = allMode ? (tab === 'nastaveni' ? vSharedSettings : vAll) : { prehled: vPrehled, odmeny: vOdmeny, loty: vLoty, pohyby: vPohyby, dane: vDane, nastaveni: vNastaveni }[tab];
     $('#view').innerHTML = v();
-    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab && !b.dataset.goto));
     $('#btnCur').textContent = CUR() === 'USD' ? '$ → Kč' : 'Kč → $';
     const bt = allMode ? 'Krypto správa' : `${ICON[SYM] || ''} ${SYM}`.trim();
     $('#brandTxt').textContent = bt; document.title = bt;
@@ -726,7 +726,11 @@
 
   document.addEventListener('click', async ev => {
     const t = ev.target;
-    if (t.closest('#tabs button')) { tab = t.closest('#tabs button').dataset.tab; if (!busy) $('#log').classList.add('hidden'); render(); return; }
+    if (t.closest('#tabs button')) {
+      const b = t.closest('#tabs button'); tab = b.dataset.tab; if (!busy) $('#log').classList.add('hidden'); render();
+      if (b.dataset.goto === 'donate') { const c = document.getElementById('donateCard'); if (c) { c.scrollIntoView({ behavior: 'smooth', block: 'center' }); c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1600); } }
+      return;
+    }
     if (t.id === 'log' && !busy) { t.classList.add('hidden'); return; }
     if (t.id === 'btnSync') return doSync();
     if (t.id === 'reportBug') return openExternal(bugReportUrl());

@@ -50,7 +50,9 @@ const Chains = (() => {
   async function syncBTC(cd, log) {
     LOG = log; log('BTC: dotazuji mempool.space / blockstream.info…');
     const K = window.Crypto2, ch = cd.chain = cd.chain || { raw: {}, addrs: {}, dec: 8 };
-    ch.dec = 8; ch.raw = ch.raw || {}; ch.addrs = {};
+    ch.dec = 8; ch.raw = ch.raw || {}; ch.addrs = ch.addrs || {};
+    // nový seznam adres se staví stranou – dokud se neprověří všechny, appka počítá se starým (jinak by evidence ukazovala 0)
+    const addrs = {};
     const srcs = (cd.settings.sources || []).map(s => s.trim()).filter(Boolean);
     const GAP = 20;
     for (const src of srcs) {
@@ -66,21 +68,21 @@ const Chains = (() => {
               const batch = K.deriveAddresses(src, type, chainIdx, idx, 10);
               for (const a of batch) {
                 const st = await btcAddrInfo(a); await sleep(120);
-                ch.addrs[a] = { src: 'xpub', type, chain: chainIdx, idx, used: st.txs > 0, bal: st.bal };
+                addrs[a] = { src: 'xpub', type, chain: chainIdx, idx, used: st.txs > 0, bal: st.bal };
                 if (st.txs > 0) { unused = 0; typeUsed = true; } else unused++;
                 idx++;
                 if (unused >= GAP) break;
               }
             }
-            log(`BTC ${type} ${chainIdx ? 'vracení' : 'příjem'}: prověřeno ${idx} adres, použité: ${Object.values(ch.addrs).filter(x => x.type === type && x.chain === chainIdx && x.used).length}`);
+            log(`BTC ${type} ${chainIdx ? 'vracení' : 'příjem'}: prověřeno ${idx} adres, použité: ${Object.values(addrs).filter(x => x.type === type && x.chain === chainIdx && x.used).length}`);
           }
         }
       } else if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/.test(src)) {
         const st = await btcAddrInfo(src); await sleep(120);
-        ch.addrs[src] = { src: 'addr', used: st.txs > 0, bal: st.bal };
+        addrs[src] = { src: 'addr', used: st.txs > 0, bal: st.bal };
       } else log('Neznámý BTC zdroj: ' + src.slice(0, 20));
     }
-    const used = Object.entries(ch.addrs).filter(([, v]) => v.used).map(([a]) => a);
+    const used = Object.entries(addrs).filter(([, v]) => v.used).map(([a]) => a);
     log(`BTC: použitých adres ${used.length}, stahuji transakce…`);
     for (const a of used) {
       let lastSeen = null;
@@ -96,7 +98,9 @@ const Chains = (() => {
         lastSeen = list[list.length - 1].txid;
       }
     }
-    ch.balance = Object.values(ch.addrs).reduce((s, v) => s + (v.bal || 0), 0) / 1e8;
+    // výměna najednou: adresy, zůstatek i transakce jsou v jednom okamžiku konzistentní
+    ch.addrs = addrs;
+    ch.balance = Object.values(addrs).reduce((s, v) => s + (v.bal || 0), 0) / 1e8;
     ch.at = Date.now();
     log(`BTC: transakcí ${Object.keys(ch.raw).length}, zůstatek ${AdaCore.fmtN(ch.balance, 8)} BTC`);
   }
