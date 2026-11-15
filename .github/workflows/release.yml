@@ -46,6 +46,9 @@ jobs:
           if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"; export KS_FILE="$RUNNER_TEMP/release.jks"; fi
           gradle -p android --no-daemon :app:assembleRelease
           cp android/app/build/outputs/apk/release/app-release.apk "dist/KryptoSprava-${{ steps.ver.outputs.v }}.apk"
+          echo "== Podpis APK =="
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "dist/KryptoSprava-${{ steps.ver.outputs.v }}.apk" | grep -i "SHA-256"
+          if [ -n "$KS_B64" ] && "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "dist/KryptoSprava-${{ steps.ver.outputs.v }}.apk" | grep -qi "CN=Android Debug"; then echo "CHYBA: APK je podepsané debug klíčem"; exit 1; fi
       - uses: softprops/action-gh-release@v2
         if: steps.ver.outputs.skip != '1'
         with:

@@ -1,7 +1,7 @@
 /* Krypto správa – jádro (čistá logika, bez UI). Běží v prohlížeči i v Node (testy). */
 (function (root) {
   'use strict';
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const SHELLEY_EPOCH = 208, SHELLEY_START = 1596059091000, EPOCH_MS = 432000000;
   const DAY = 86400000, HOUR = 3600000;
   const STABLE_USD = new Set(['USD', 'USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD']);
