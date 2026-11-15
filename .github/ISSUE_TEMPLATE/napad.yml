@@ -1,0 +1,15 @@
+name: Nápad / přání
+description: Co by appka měla umět (nová mince, burza, export…)
+title: "[nápad] "
+labels: [nápad]
+body:
+  - type: textarea
+    id: napad
+    attributes:
+      label: Co by se hodilo
+    validations:
+      required: true
+  - type: textarea
+    id: proc
+    attributes:
+      label: K čemu to využiješ

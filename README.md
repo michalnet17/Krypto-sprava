@@ -24,6 +24,11 @@ PC verze potřebuje jen **Python 3** (bez dalších knihoven). Podrobný návod 
 
 Appka sama upozorní, když vyjde nová verze.
 
+## Chyby a nápady
+
+V appce: **Nastavení → O aplikaci → Nahlásit chybu / nápad** (nebo tlačítko u červené chybové hlášky) – otevře se předvyplněné hlášení s verzí a logem, adresy se automaticky zamaskují.
+Případně rovnou [Issues → New issue](../../issues/new/choose). Hlášení jsou veřejná – nevkládej své adresy, xpub ani `state.json`.
+
 ## Soukromí
 
 - Všechna data jsou jen ve tvém počítači / telefonu (`data/state.json`). Nic se neodesílá.

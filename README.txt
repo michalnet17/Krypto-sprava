@@ -1,4 +1,4 @@
-Krypto sprava 0.3.3 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
+Krypto sprava 0.3.4 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
 =============================================================================
 
 Windows
@@ -32,7 +32,7 @@ PDF zprava: Export -> PDF otevre zpravu v prohlizeci -> "Ulozit jako PDF" (vsech
 
 Android
 -------
-BUILD-APK.bat -> files\KryptoSprava-0.3.3-debug.apk (Gradle wrapper se zkopiruje ze slozky
+BUILD-APK.bat -> files\KryptoSprava-0.3.4-debug.apk (Gradle wrapper se zkopiruje ze slozky
 v promenne GRADLE_WRAPPER_FROM, SDK z %LOCALAPPDATA%\Android\Sdk, platforma 35). Jednodussi: GitHub Actions.
 Exporty CSV z telefonu jdou do Stazene soubory/Krypto-sprava.
 Data PC a telefonu jsou oddelena - prenos: Nastaveni -> Zaloha (JSON) -> Obnovit.

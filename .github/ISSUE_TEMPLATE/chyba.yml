@@ -1,0 +1,53 @@
+name: Nahlásit chybu
+description: Něco nefunguje nebo nesedí výpočet
+title: "[chyba] "
+labels: [chyba]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Díky za nahlášení! **Hlášení je veřejné** – nevkládej své adresy, xpub, seed, soubor `state.json` ani exporty z burz.
+        Na screenshotech adresy a částky rozmaž. Údaje z tlačítka v appce jsou už zamaskované.
+  - type: textarea
+    id: popis
+    attributes:
+      label: Co se stalo
+      description: Co jsi dělal (kroky) a co se objevilo
+      placeholder: "1. Přepnul jsem na BTC  2. Klikl na Aktualizovat  3. Objevila se chyba…"
+    validations:
+      required: true
+  - type: textarea
+    id: ocekavani
+    attributes:
+      label: Co jsi čekal
+  - type: input
+    id: verze
+    attributes:
+      label: Verze appky
+      description: Nahoře vedle názvu (např. 0.3.4)
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Systém
+      placeholder: Windows / Linux / macOS / Android
+  - type: input
+    id: mince
+    attributes:
+      label: Mince
+  - type: textarea
+    id: chyba
+    attributes:
+      label: Chybová hláška
+      render: text
+  - type: textarea
+    id: log
+    attributes:
+      label: Log (poslední řádky)
+      render: text
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Přetáhni sem obrázek (adresy rozmaž)

@@ -50,8 +50,44 @@
     return { v: 1, settings: { stakeAddresses: [], koiosToken: '', stakingTaxedOnReceipt: true, includeExemptInLimit: true, limitCzk: 100000, otherCryptoIncome: {} }, imports: [], overrides: {}, chain: null, prices: null, lastSync: null, coin: 'ADA', coinData: {} };
   }
   async function save() { try { await Platform.saveState(state); } catch (e) { status('Uložení selhalo: ' + e.message, true); } }
-  function status(t, bad) { const s = $('#status'); s.textContent = t; s.classList.toggle('hidden', !t); s.style.color = bad ? '#fca5a5' : ''; }
-  function log(t) { const l = $('#log'); l.classList.remove('hidden'); l.textContent += new Date().toLocaleTimeString('cs-CZ') + '  ' + t + '\n'; l.scrollTop = 1e9; }
+  const logBuf = []; let lastError = null;
+  function status(t, bad) {
+    const s = $('#status'); s.textContent = t; s.classList.toggle('hidden', !t); s.style.color = bad ? '#fca5a5' : '';
+    if (bad && t) {
+      lastError = { t, at: new Date().toISOString() };
+      if (REPO) { const b = document.createElement('button'); b.className = 'btn sec small'; b.id = 'reportBug'; b.textContent = 'Nahlásit chybu'; b.style.marginLeft = '10px'; s.appendChild(b); }
+    }
+  }
+  function log(t) {
+    const line = new Date().toLocaleTimeString('cs-CZ') + '  ' + t;
+    logBuf.push(line); if (logBuf.length > 60) logBuf.shift();
+    const l = $('#log'); l.classList.remove('hidden'); l.textContent += line + '\n'; l.scrollTop = 1e9;
+  }
+  window.addEventListener('error', e => { lastError = { t: 'JS: ' + (e.message || e) + (e.filename ? ` (${String(e.filename).split('/').pop()}:${e.lineno})` : ''), at: new Date().toISOString() }; });
+  window.addEventListener('unhandledrejection', e => { lastError = { t: 'JS: ' + ((e.reason && e.reason.message) || e.reason), at: new Date().toISOString() }; });
+  /** zamaskuje adresy, xpub, hashe a klíče – do veřejného hlášení nesmí nic osobního */
+  function scrub(txt) {
+    return String(txt || '')
+      .replace(/\b(addr1|stake1|addr_test1|stake_test1)[0-9a-z]{20,}/g, '$1…')
+      .replace(/\b([xyzt]pub)[1-9A-HJ-NP-Za-km-z]{60,}/g, '$1…')
+      .replace(/\b(bc1|tb1)[0-9a-z]{20,}/gi, '$1…')
+      .replace(/\b0x[0-9a-fA-F]{40,64}\b/g, '0x…')
+      .replace(/\b[0-9a-fA-F]{40,}\b/g, '[hash]')
+      .replace(/\b[1-9A-HJ-NP-Za-km-z]{25,}\b/g, m => /\d/.test(m) && /[a-z]/.test(m) && /[A-Z]/.test(m) ? m.slice(0, 4) + '…' : m)
+      .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, '[e-mail]');
+  }
+  function bugReportUrl() {
+    const ua = navigator.userAgent;
+    const os = Platform.isAndroid ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'jiný';
+    const coins = ALL ? ALL.syms.join(', ') : SYM;
+    const err = lastError ? `${lastError.t}  (${lastError.at.slice(0, 16).replace('T', ' ')} UTC)` : '';
+    let lg = logBuf.slice(-25).join('\n');
+    const q = p => encodeURIComponent(scrub(p));
+    let url = `https://github.com/${REPO}/issues/new?template=chyba.yml&title=${encodeURIComponent('[chyba] ')}&verze=${q(C.VERSION)}&system=${q(os + (Platform.isAndroid ? '' : ' · ' + (ua.match(/(Firefox|Edg|Chrome|Safari)\/[\d.]+/) || [''])[0]))}&mince=${q(coins)}&chyba=${q(err)}`;
+    while (lg && (url + '&log=' + q(lg)).length > 7500) lg = lg.split('\n').slice(1).join('\n');
+    return url + (lg ? '&log=' + q(lg) : '');
+  }
+  function openExternal(url) { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove(); }
 
   /** události z exportů burz pro danou minci (ADA uložené rovnou, ostatní z uloženého textu exportu) */
   const _impCache = {};
@@ -555,6 +591,7 @@
     <div class="card"><h3>O aplikaci</h3>
       <p>Krypto správa <b>${C.VERSION}</b>${REPO ? ` · <a href="https://github.com/${esc(REPO)}" target="_blank" rel="noopener">github.com/${esc(REPO)}</a>` : ''}</p>
       ${REPO ? `<label class="row"><input type="checkbox" id="updChk" ${state.settings.updateCheck !== false ? 'checked' : ''}> Upozornit na novou verzi (1× denně se zeptá GitHubu na číslo poslední verze – nic se neodesílá)</label>
+      <div class="row2"><button class="btn sec small" id="reportBug">Nahlásit chybu / nápad</button> <span class="small mut">otevře hlášení na GitHubu s verzí a logem – adresy se automaticky zamaskují</span></div>
       <div class="row2"><button class="btn sec small" id="updNow">Zkontrolovat teď</button> <span class="small mut">${state.update && state.update.at ? 'naposledy ' + new Date(state.update.at).toLocaleString('cs-CZ') + (state.update.latest ? ' · poslední verze ' + esc(state.update.latest) : '') : ''}</span></div>` : '<p class="small mut">Kontrola nových verzí není v této kopii nastavená.</p>'}</div>
     <div class="card"><h3>Podpořit vývoj</h3>
       <div class="donate">${donateAddr() === DONATE_BUILTIN ? '<img src="donate.svg" alt="QR kód adresy pro dar" width="132" height="132">' : ''}
@@ -692,6 +729,7 @@
     if (t.closest('#tabs button')) { tab = t.closest('#tabs button').dataset.tab; if (!busy) $('#log').classList.add('hidden'); render(); return; }
     if (t.id === 'log' && !busy) { t.classList.add('hidden'); return; }
     if (t.id === 'btnSync') return doSync();
+    if (t.id === 'reportBug') return openExternal(bugReportUrl());
     if (t.id === 'updNow') { await checkUpdate(true); return render(); }
     if (t.id === 'updLater') { (state.update = state.update || {}).dismissed = state.update.latest; await save(); return showUpdate(); }
     if (t.id === 'copyDonate') {
