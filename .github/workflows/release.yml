@@ -1,8 +1,10 @@
-# Vydání: po pushnutí tagu vX.Y.Z se sestaví zipy (Windows/Linux/Mac) a APK a přidají se do Releases.
+# Vydání: když se do main nahraje nové číslo verze (VERSION ve web/core.js), sestaví se zipy
+# (Windows/Linux/Mac) a APK a vytvoří se Release vX.Y.Z. Stejná verze se podruhé nevydá.
 name: Release
 on:
   push:
-    tags: ['v*']
+    branches: [main]
+    paths: ['web/core.js', '.github/workflows/release.yml']
   workflow_dispatch:
 permissions:
   contents: write
@@ -11,20 +13,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Kontrola verze (tag = web/core.js)
+      - name: Verze z web/core.js
         id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           V=$(grep -oP "VERSION = '\K[0-9.]+" web/core.js)
           echo "v=$V" >> "$GITHUB_OUTPUT"
-          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then echo "Tag ${GITHUB_REF_NAME} neodpovídá verzi v$V v web/core.js"; exit 1; fi
+          if gh release view "v$V" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then echo "Verze v$V už je vydaná – přeskakuji."; echo "skip=1" >> "$GITHUB_OUTPUT"; fi
       - name: Balíčky pro PC
+        if: steps.ver.outputs.skip != '1'
         run: tools/package.sh "${{ steps.ver.outputs.v }}"
       - uses: actions/setup-java@v4
+        if: steps.ver.outputs.skip != '1'
         with: { distribution: temurin, java-version: '17' }
       - uses: android-actions/setup-android@v3
+        if: steps.ver.outputs.skip != '1'
       - uses: gradle/actions/setup-gradle@v4
+        if: steps.ver.outputs.skip != '1'
         with: { gradle-version: '8.10.2' }
       - name: APK
+        if: steps.ver.outputs.skip != '1'
         env:
           KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -36,8 +45,11 @@ jobs:
           gradle -p android --no-daemon :app:assembleRelease
           cp android/app/build/outputs/apk/release/app-release.apk "dist/KryptoSprava-${{ steps.ver.outputs.v }}.apk"
       - uses: softprops/action-gh-release@v2
-        if: github.ref_type == 'tag'
+        if: steps.ver.outputs.skip != '1'
         with:
+          tag_name: v${{ steps.ver.outputs.v }}
+          target_commitish: ${{ github.sha }}
+          name: Krypto správa ${{ steps.ver.outputs.v }}
           files: |
             dist/*.zip
             dist/*.apk

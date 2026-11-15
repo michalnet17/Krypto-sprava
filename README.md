@@ -48,7 +48,7 @@ addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2
 
 - `web/` – celá appka (HTML/JS), stejná pro PC i Android · `server.py` – lokální server (Python stdlib)
 - `android/` – WebView obal · sestavení: GitHub Actions (`.github/workflows/release.yml`) nebo `BUILD-APK.bat`
-- Nová verze: zvyš `VERSION` ve `web/core.js` (a `versionCode`/`versionName` v `android/app/build.gradle`), pushni tag `vX.Y.Z` – zipy i APK se sestaví a vydají samy.
+- Nová verze: zvyš `VERSION` ve `web/core.js` (a `versionCode`/`versionName` v `android/app/build.gradle`), nahraj do `main` – zipy i APK se sestaví a vydají samy jako Release `vX.Y.Z`.
 - `donate.json` – aktuální donate adresa, appka si ji načítá (změna se projeví i ve starších verzích).
 
 Licence: [MIT](LICENSE)
