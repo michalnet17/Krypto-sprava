@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Krypto správa</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div class="brand"><span id="brandTxt">Krypto správa</span> <small id="ver"></small></div>
+  <div class="actions">
+    <select id="coinSel" title="Mince"></select>
+    <button id="btnCur" class="btn sec" title="Přepnout měnu">Kč</button>
+    <button id="btnExport" class="btn sec" title="Export do CSV / PDF">⇩ Export</button>
+    <button id="btnSync" class="primary">⟳ Aktualizovat</button>
+  </div>
+</header>
+<nav id="tabs">
+  <button data-tab="prehled" class="on">Přehled</button>
+  <button data-tab="odmeny">Odměny</button>
+  <button data-tab="loty">Loty</button>
+  <button data-tab="pohyby">Pohyby</button>
+  <button data-tab="dane">Daně</button>
+  <button data-tab="nastaveni">Nastavení</button>
+</nav>
+<div id="updBar" class="updbar hidden"></div>
+<div id="status" class="status hidden"></div>
+<main id="view"></main>
+<div id="log" class="log hidden"></div>
+<script src="core.js"></script>
+<script src="platform.js"></script>
+<script src="sync.js"></script>
+<script src="crypto.js"></script>
+<script src="chains.js"></script>
+<script src="report.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

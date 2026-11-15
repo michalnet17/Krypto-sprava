@@ -1,0 +1,44 @@
+# Vydání: po pushnutí tagu vX.Y.Z se sestaví zipy (Windows/Linux/Mac) a APK a přidají se do Releases.
+name: Release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Kontrola verze (tag = web/core.js)
+        id: ver
+        run: |
+          V=$(grep -oP "VERSION = '\K[0-9.]+" web/core.js)
+          echo "v=$V" >> "$GITHUB_OUTPUT"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then echo "Tag ${GITHUB_REF_NAME} neodpovídá verzi v$V v web/core.js"; exit 1; fi
+      - name: Balíčky pro PC
+        run: tools/package.sh "${{ steps.ver.outputs.v }}"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+        with: { gradle-version: '8.10.2' }
+      - name: APK
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
+          KS_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KS_KEY_PASS: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          mkdir -p android/app/src/main/assets && cp -r web android/app/src/main/assets/web
+          if [ -n "$KS_B64" ]; then echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"; export KS_FILE="$RUNNER_TEMP/release.jks"; fi
+          gradle -p android --no-daemon :app:assembleRelease
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/KryptoSprava-${{ steps.ver.outputs.v }}.apk"
+      - uses: softprops/action-gh-release@v2
+        if: github.ref_type == 'tag'
+        with:
+          files: |
+            dist/*.zip
+            dist/*.apk
+          generate_release_notes: true

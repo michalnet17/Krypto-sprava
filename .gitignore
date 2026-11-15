@@ -1,0 +1,19 @@
+# osobní data – NIKDY do repozitáře
+data/
+exporty/
+files/
+*.json.bak
+# sestavení
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/
+android/local.properties
+*.apk
+*.keystore
+*.jks
+dist/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
