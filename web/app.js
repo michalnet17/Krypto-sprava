@@ -233,7 +233,7 @@
   async function checkUpdate(force) {
     if (!REPO || state.settings.updateCheck === false) return;
     const u = state.update = state.update || {};
-    if (!force && u.at && Date.now() - u.at < 20 * 3600000) return showUpdate();
+    if (!force && u.at && Date.now() - u.at < 3600000) return showUpdate();   // nejvýš 1× za hodinu
     try {
       const r = await Platform.http('GET', `https://api.github.com/repos/${REPO}/releases/latest`, null, { 'Accept': 'application/vnd.github+json' });
       if (r.ok && r.status === 200) {
