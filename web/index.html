@@ -6,13 +6,15 @@
 <title>Krypto správa</title>
 <link rel="icon" href="logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="style.css">
+<script>try { if (localStorage.getItem('ks-theme') === 'light') document.documentElement.classList.add('light'); } catch (e) {}</script>
 </head>
 <body>
 <header>
   <div class="brand"><span id="brandTxt">Krypto správa</span> <small id="ver"></small></div>
   <div class="actions">
     <select id="coinSel" title="Mince"></select>
-    <button id="btnCur" class="btn sec" title="Přepnout měnu">Kč</button>
+    <button id="btnCur" class="btn sec" title="Přepnout měnu (Kč / € / $)">Kč</button>
+    <button id="btnTheme" class="btn sec" title="Světlý / tmavý režim" aria-label="Světlý / tmavý režim">☀</button>
     <button id="btnExport" class="btn sec" title="Export do CSV / PDF">⇩ Export</button>
     <button id="btnSync" class="primary">⟳ Aktualizovat</button>
   </div>

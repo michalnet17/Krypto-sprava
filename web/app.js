@@ -23,18 +23,25 @@
   const N = (x, d) => C.fmtN(x, d == null ? DP : d);
   const K = x => x == null ? '–' : C.fmtN(x, 0) + ' Kč';
   const U = x => x == null ? '–' : '$' + C.fmtN(x, 2);
+  const E = x => x == null ? '–' : C.fmtN(x, 2) + ' €';
+  const CURS = ['CZK', 'EUR', 'USD'], CURL = { CZK: 'Kč', EUR: '€', USD: '$' };
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const CUR = () => (state && state.settings.currency) || 'CZK';
   /** částka v USD -> zobrazení ve zvolené měně */
-  const MU = usd => { if (usd == null || !isFinite(usd)) return '–'; if (CUR() === 'USD') return U(usd); const r = R && R.summary.usdCzk; return r ? K(usd * r) : '–'; };
+  const RATES = () => { const s = (R && R.summary) || (ALL && ALL.R.ADA && ALL.R.ADA.summary) || {}; return { usd: s.usdCzk, eur: s.eurCzk }; };
+  const MU = usd => {
+    if (usd == null || !isFinite(usd)) return '–'; if (CUR() === 'USD') return U(usd);
+    const r = RATES(); if (!r.usd) return '–';
+    return CUR() === 'EUR' ? (r.eur ? E(usd * r.usd / r.eur) : '–') : K(usd * r.usd);
+  };
   /** množství ADA -> hodnota ve zvolené měně */
   /** jednotková cena (může být i zlomek haléře/centu) */
   const PU = usd => {
     if (usd == null || !isFinite(usd)) return '–';
-    const usdMode = CUR() === 'USD', r = R && R.summary.usdCzk;
-    const v = usdMode ? usd : (r ? usd * r : null); if (v == null) return '–';
+    const cur = CUR(), r = RATES();
+    const v = cur === 'USD' ? usd : !r.usd ? null : cur === 'EUR' ? (r.eur ? usd * r.usd / r.eur : null) : usd * r.usd; if (v == null) return '–';
     const d = v >= 100 ? 2 : v >= 1 ? 3 : v >= 0.01 ? 4 : 6;
-    return usdMode ? '$' + C.fmtN(v, d) : C.fmtN(v, d) + ' Kč';
+    return cur === 'USD' ? '$' + C.fmtN(v, d) : C.fmtN(v, d) + (cur === 'EUR' ? ' €' : ' Kč');
   };
   const MA = ada => (R && R.summary.priceUsd != null) ? MU(ada * R.summary.priceUsd) : '–';
   const D = ms => C.dayKey(ms).split('-').reverse().join('.');
@@ -52,7 +59,7 @@
   async function save() { try { await Platform.saveState(state); if (PR) PR.onSaved().catch(e => log('Synchronizace: ' + e.message)); } catch (e) { status('Uložení selhalo: ' + e.message, true); } }
   const logBuf = []; let lastError = null;
   function status(t, bad) {
-    const s = $('#status'); s.textContent = t; s.classList.toggle('hidden', !t); s.style.color = bad ? '#fca5a5' : '';
+    const s = $('#status'); s.textContent = t; s.classList.toggle('hidden', !t); s.style.color = bad ? 'var(--badtxt)' : '';
     if (bad && t) {
       lastError = { t, at: new Date().toISOString() };
       if (REPO) { const b = document.createElement('button'); b.className = 'btn sec small'; b.id = 'reportBug'; b.textContent = 'Nahlásit chybu'; b.style.marginLeft = '10px'; s.appendChild(b); }
@@ -167,7 +174,7 @@
   /* ---------- Přehled ---------- */
   function vPrehled() {
     const s = R.summary, y = R.years[s.year] || {};
-    const rewTot = Object.values(R.years).reduce((a, o) => ({ n: a.n + o.rewardsCount, ada: a.ada + o.rewardsAda, czk: a.czk + o.rewardsCzk, usd: a.usd + o.rewardsUsd }), { n: 0, ada: 0, czk: 0, usd: 0 });
+    const rewTot = Object.values(R.years).reduce((a, o) => ({ n: a.n + o.rewardsCount, ada: a.ada + o.rewardsAda, czk: a.czk + o.rewardsCzk, usd: a.usd + o.rewardsUsd, eur: a.eur + (o.rewardsEur || 0) }), { n: 0, ada: 0, czk: 0, usd: 0, eur: 0 });
     const usedPct = Math.min(100, s.usedLimit / R.settings.limitCzk * 100);
     let h = '';
     if (isADA() && !state.settings.stakeAddresses.length && !state.imports.length) h += `<div class="warnbox">Začni v <b>Nastavení</b>: zadej stake adresu (stake1…) a nahraj exporty z burz. Pak klikni <b>Aktualizovat</b>.</div>`;
@@ -181,7 +188,7 @@
       ${(() => { const g = sinceStart(SYM); if (!g || g.gain == null || (g.inv < 0.5 && g.proceeds < 0.5 && !g.value)) return '';
         return `<div class="card kpi"><h3>Zisk od začátku</h3><div class="v ${CLS(g.gain)}">${g.pct != null ? PCT(g.pct) : SG(g.gain, MK)}</div>
           <div class="s">${g.pct != null ? SG(g.gain, MK) + ' · ' : ''}vloženo ${MK(g.inv)}</div><div class="s">dnes ${MK(g.value)}${g.proceeds > 0.5 ? ' + prodeje ' + MK(g.proceeds) : ''}${rewTot.n ? ' · staking zdarma' : ''}</div>${g.invEst > 0.5 ? `<div class="s mut">z vloženého ${MK(g.invEst)} odhad – příchozí bez doloženého nákupu (cena v den příchodu)</div>` : ''}${g.noPrice ? `<div class="s warn">${g.noPrice}× nákup bez ceny – dej Aktualizovat</div>` : ''}${g.pct == null ? '<div class="s mut">bez nákupů – % nejde spočítat</div>' : ''}</div>`; })()}
-      ${rewTot.n ? '' : '<!--'}<div class="card kpi"><h3>Staking celkem</h3><div class="v">${N(rewTot.ada)} ${SY}</div><div class="s">${rewTot.n} odměn · ${CUR() === 'USD' ? U(rewTot.usd) : K(rewTot.czk)} (v den připsání)</div></div>${rewTot.n ? '' : '-->'}
+      ${rewTot.n ? '' : '<!--'}<div class="card kpi"><h3>Staking celkem</h3><div class="v">${N(rewTot.ada)} ${SY}</div><div class="s">${rewTot.n} odměn · ${CUR() === 'USD' ? U(rewTot.usd) : CUR() === 'EUR' ? E(rewTot.eur) : K(rewTot.czk)} (v den připsání)</div></div>${rewTot.n ? '' : '-->'}
     </div>`;
     h += `<div class="card"><h3>Rok ${s.year}: kolik můžeš prodat bez daně</h3>
       <div class="row2">Příjmy z prodejů krypta letos (pro limit): <b>${K(s.usedLimit)}</b> z ${K(R.settings.limitCzk)}</div>
@@ -333,13 +340,13 @@
       age.old += r.summary.oldAda * p; age.young += r.summary.youngAda * p;
     }
     if (syms.includes('ADA')) { const t = adaTokens(); if (t.tokUsd && usdCzk) { byCoin.push({ label: 'Tokeny (ADA)', value: t.tokUsd * usdCzk, key: 'TOK' }); byPlace['Peněženky'] = (byPlace['Peněženky'] || 0) + t.tokUsd * usdCzk; } }
-    const fmt = v => K(v);
+    const fmt = v => MK(v);
     const parts = [];
     if (syms.length > 1 && byCoin.length) parts.push(Report.donut(byCoin, { title: 'Podle mincí', fmt }));
     const pl = Object.entries(byPlace).filter(([, v]) => v > 0.5).map(([label, value]) => ({ label, value }));
     if (pl.length) parts.push(Report.donut(pl, { title: 'Kde to je', fmt }));
     if (age.old + age.young > 0.5) parts.push(Report.donut([{ label: 'Drženo > 3 roky', value: age.old, color: '#22c55e' }, { label: 'Drženo ≤ 3 roky', value: age.young, color: '#f59e0b' }], { title: 'Časový test', fmt }));
-    return parts.length ? `<div class="card"><h3>Grafy portfolia</h3><div class="charts">${parts.join('')}</div><div class="small mut">Hodnoty v Kč podle aktuální ceny. Tokeny ADA jen ty, u kterých je známá cena.</div></div>` : '';
+    return parts.length ? `<div class="card"><h3>Grafy portfolia</h3><div class="charts">${parts.join('')}</div><div class="small mut">Hodnoty v ${CURL[CUR()]} podle aktuální ceny. Tokeny ADA jen ty, u kterých je známá cena.</div></div>` : '';
   }
 
   /* ---------- Portfolio (vždy nahoře na Přehledu) ---------- */
@@ -395,7 +402,7 @@
       ${ch.assets ? `<details style="margin-top:8px" ${list.length && list.length <= 10 ? 'open' : ''}><summary><b>Tokeny: ${list.length}</b>${nftCount ? ` · NFT: ${nftCount}` : ''}</summary>
         ${list.length ? `<div class="tw" style="max-height:360px"><table><tr><th>Token</th><th class="n">Množství</th><th class="n">Cena</th><th class="n">Hodnota</th><th>3 roky (bez daně)</th><th class="hide-m"></th></tr>${tokRows}</table></div>
         <div class="small mut">Ceny tokenů: CoinGecko (USD, přepočet na Kč kurzem ČNB). Token bez ceny CoinGecko nezná. Časový test u tokenů: FIFO podle data, kdy token přišel (swap, airdrop). Výměnu tokenu vydavatelem (např. WMT → WMTX, stejné množství v jedné transakci) appka pozná a ponechá původní data nabytí.${state.tokenPrices ? '' : ' Ceny se načtou po Aktualizovat.'}</div>` : '<span class="mut small">Žádné tokeny.</span>'}</details>` : '<div class="small mut" style="margin-top:6px">Tokeny se načtou po Aktualizovat.</div>'}
-      <div class="small mut" style="margin-top:6px">Cena ${SYM} ${U(s.priceUsd)} / ${s.priceCzk != null ? N(s.priceCzk, 2) + ' Kč' : '–'} (${DK(s.lastPriceDay)}) · zobrazeno v ${CUR() === 'USD' ? 'USD' : 'Kč'}</div></div>`;
+      <div class="small mut" style="margin-top:6px">Cena ${SYM} ${U(s.priceUsd)} / ${s.priceCzk != null ? N(s.priceCzk, 2) + ' Kč' : '–'} (${DK(s.lastPriceDay)}) · zobrazeno v ${CURL[CUR()]}</div></div>`;
   }
 
   // logo se nenačetlo -> další zdroj, nakonec písmena
@@ -528,6 +535,13 @@
     return h + '</div>';
   }
   /** skutečně držené množství: blockchain + kladné zůstatky na burzách (u ADA evidence, ta je odsouhlasená) */
+  function applyTheme() {
+    const light = state.settings.theme === 'light';
+    document.documentElement.classList.toggle('light', light);
+    try { localStorage.setItem('ks-theme', light ? 'light' : 'dark'); } catch (e) { /* bez úložiště prohlížeče */ }
+    if (window.AndroidBridge && AndroidBridge.setTheme) try { AndroidBridge.setTheme(light ? 'light' : 'dark'); } catch (e) { /* starší APK */ }
+  }
+
   /* ---------- zisk od začátku (celkový výnos) ----------
      zisk = dnešní hodnota + peníze z prodejů − vše vložené do nákupů (vč. poplatků).
      Odměny ze stakingu / earn jsou zdarma (čistý zisk). Příchozí bez doloženého nákupu se berou
@@ -550,7 +564,7 @@
     const gain = value != null ? value + proceeds - inv : null;
     return { inv, invFiat, invEst, proceeds, value, gain, pct: inv > 0.5 && gain != null ? gain / inv * 100 : null, noPrice };
   }
-  const MK = czk => { if (czk == null || !isFinite(czk)) return '–'; const r = R && R.summary.usdCzk; return CUR() === 'USD' && r ? U(czk / r) : K(czk); };
+  const MK = czk => { if (czk == null || !isFinite(czk)) return '–'; const r = RATES(); return CUR() === 'USD' && r.usd ? U(czk / r.usd) : CUR() === 'EUR' && r.eur ? E(czk / r.eur) : K(czk); };
   const SG = (x, f) => x == null || !isFinite(x) ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '') + f(Math.abs(x));
   const PCT = x => SG(x, v => C.fmtN(v, v >= 100 ? 0 : 1) + ' %');
   const CLS = x => x == null ? '' : x > 0 ? 'ok' : x < 0 ? 'bad' : '';
@@ -631,7 +645,7 @@
       <button class="btn bad" id="resetChain">Znovu stáhnout blockchain</button></div>
     <div class="card"><h3>O aplikaci</h3>
       <p>Krypto správa <b>${C.VERSION}</b>${REPO ? ` · <a href="https://github.com/${esc(REPO)}" target="_blank" rel="noopener">github.com/${esc(REPO)}</a>` : ''}</p>
-      ${REPO ? `<label class="row"><input type="checkbox" id="updChk" ${state.settings.updateCheck !== false ? 'checked' : ''}> Upozornit na novou verzi (1× denně se zeptá GitHubu na číslo poslední verze – nic se neodesílá)</label>
+      ${REPO ? `<label class="row"><input type="checkbox" id="updChk" ${state.settings.updateCheck !== false ? 'checked' : ''}> Upozornit na novou verzi (nejvýš 1× za hodinu se zeptá GitHubu na číslo poslední verze – nic se neodesílá)</label>
       <div class="row2"><button class="btn sec small" id="reportBug">Nahlásit chybu / nápad</button> <span class="small mut">otevře hlášení na GitHubu s verzí a logem – adresy se automaticky zamaskují</span></div>
       <div class="row2"><button class="btn sec small" id="updNow">Zkontrolovat teď</button> <span class="small mut">${state.update && state.update.at ? 'naposledy ' + new Date(state.update.at).toLocaleString('cs-CZ') + (state.update.latest ? ' · poslední verze ' + esc(state.update.latest) : '') : ''}</span></div>` : '<p class="small mut">Kontrola nových verzí není v této kopii nastavená.</p>'}</div>
     <div class="card" id="donateCard"><h3>Podpořit vývoj</h3>
@@ -690,9 +704,9 @@
     if (!info) return;
     const st = $('#pairStat');
     if (!info.enabled || !info.running) {
-      box.innerHTML = ''; if (st) st.innerHTML = `<span style="color:#fca5a5">Server pro mobil neběží${info.error ? ' (' + esc(info.error) + ')' : ''}. Dej „Nový párovací kód“, případně restartuj appku.</span>`; return;
+      box.innerHTML = ''; if (st) st.innerHTML = `<span style="color:var(--badtxt)">Server pro mobil neběží${info.error ? ' (' + esc(info.error) + ')' : ''}. Dej „Nový párovací kód“, případně restartuj appku.</span>`; return;
     }
-    if (!info.ips.length) { box.innerHTML = ''; if (st) st.innerHTML = '<span style="color:#fca5a5">PC není připojené k žádné domácí síti.</span>'; return; }
+    if (!info.ips.length) { box.innerHTML = ''; if (st) st.innerHTML = '<span style="color:var(--badtxt)">PC není připojené k žádné domácí síti.</span>'; return; }
     const code = Pair.code(info.ips, info.port, p.k);
     if (box.dataset.code !== code) { box.innerHTML = Pair.qrSvg(code); box.dataset.code = code; }
     const c = $('#pairCode'); if (c && c.textContent !== code) c.textContent = code;
@@ -743,7 +757,11 @@
     const v = allMode ? (tab === 'nastaveni' ? vSharedSettings : vAll) : { prehled: vPrehled, odmeny: vOdmeny, loty: vLoty, pohyby: vPohyby, dane: vDane, nastaveni: vNastaveni }[tab];
     $('#view').innerHTML = v();
     document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab && !b.dataset.goto));
-    $('#btnCur').textContent = CUR() === 'USD' ? '$ → Kč' : 'Kč → $';
+    $('#btnCur').textContent = CURL[CUR()] + ' ⇄';
+    $('#btnTheme').innerHTML = state.settings.theme === 'light'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>';
+    $('#btnTheme').title = state.settings.theme === 'light' ? 'Přepnout na tmavý režim' : 'Přepnout na světlý režim';
     const bt = allMode ? 'Krypto správa' : `${ICON[SYM] || ''} ${SYM}`.trim();
     $('#brandTxt').textContent = bt; document.title = bt;
     if (tab === 'nastaveni') fillPair();
@@ -859,7 +877,8 @@
       const v = $('#coinSrc'); CD().settings.sources = [...new Set(v.value.split(/[\s,;]+/).map(x => x.trim()).filter(Boolean))];
       await save(); render(); status('Uloženo, načítám…'); return doSync(); // stažená data se nemažou – přidané adresy se jen doplní
     }
-    if (t.id === 'btnCur') { state.settings.currency = CUR() === 'USD' ? 'CZK' : 'USD'; await save(); return render(); }
+    if (t.id === 'btnCur') { state.settings.currency = CURS[(CURS.indexOf(CUR()) + 1) % CURS.length]; await save(); return render(); }
+    if (t.closest && t.closest('#btnTheme')) { state.settings.theme = state.settings.theme === 'light' ? 'dark' : 'light'; applyTheme(); await save(); return render(); }
     if (t.dataset.exp) return exportCsv(t.dataset.exp);
     if (t.dataset.del != null) { state.imports.splice(+t.dataset.del, 1); await save(); return render(); }
     if (t.dataset.destrest) {
@@ -929,6 +948,7 @@
     try { state = Object.assign(defState(), await Platform.loadState() || {}); }
     catch (e) { $('#view').innerHTML = `<div class="warnbox">Appka neběží přes server. Na PC ji spouštěj přes <b>START-PC.bat</b>.<br>${esc(e.message)}</div>`; return; }
     state.settings = Object.assign(defState().settings, state.settings);
+    applyTheme();
     PR = Pair.create({ state: () => state, persist: () => Platform.saveState(state), refresh: render, status, log, isBusy: () => busy, http: Platform.http });
     render();
     const pg = await Platform.ping();

@@ -54,6 +54,7 @@ public class MainActivity extends Activity {
             "api.koios.rest", "data-api.binance.vision", "api.binance.com", "www.cnb.cz", "api.coingecko.com", "mempool.space", "eth.blockscout.com", "api.mainnet-beta.solana.com", "blockstream.info", "api.github.com", "raw.githubusercontent.com"));
 
     private WebView web;
+    private FrameLayout root;
     private WebView printView; // drží se, dokud tisk neskončí
     private ValueCallback<Uri[]> fileCb;
     private final ExecutorService pool = Executors.newFixedThreadPool(3);
@@ -61,7 +62,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(Color.parseColor("#0b0f19"));
         web = new WebView(this);
         root.addView(web, new FrameLayout.LayoutParams(-1, -1));
@@ -193,6 +194,24 @@ public class MainActivity extends Activity {
     }
 
     class Bridge {
+        /** světlý / tmavý režim: barva pozadí a systémové lišty */
+        @JavascriptInterface
+        public void setTheme(final String t) {
+            runOnUiThread(() -> {
+                boolean light = "light".equals(t);
+                int c = Color.parseColor(light ? "#ffffff" : "#0b0f19");
+                root.setBackgroundColor(c);
+                web.setBackgroundColor(Color.parseColor(light ? "#f3f5f9" : "#0f1420"));
+                getWindow().setStatusBarColor(c);
+                getWindow().setNavigationBarColor(c);
+                View d = getWindow().getDecorView();
+                int f = d.getSystemUiVisibility();
+                f = light ? (f | View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR | View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR)
+                          : (f & ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR & ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
+                d.setSystemUiVisibility(f);
+            });
+        }
+
         @JavascriptInterface
         public void http(final String id, final String method, final String url, final String body, final String headersJson) {
             pool.submit(() -> {

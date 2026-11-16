@@ -4,7 +4,7 @@
    server na PC ho jen předává a klíč nezná (dostane jen odvozený přístupový token). */
 const Pair = (() => {
   const enc = new TextEncoder(), dec = new TextDecoder();
-  const LOCAL_SETTINGS = ['currency', 'updateCheck'];   // čistě vzhled/zvyk daného zařízení – nesynchronizuje se
+  const LOCAL_SETTINGS = ['currency', 'updateCheck', 'theme'];   // čistě vzhled/zvyk daného zařízení – nesynchronizuje se
 
   const b64u = u8 => { let s = ''; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
   const unb64u = s => { s = String(s).replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
