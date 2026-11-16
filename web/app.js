@@ -178,6 +178,9 @@
       <div class="card kpi"><h3>Celkem ${SYM}</h3><div class="v">${N(s.total)} ${SY}</div><div class="s">${MA(s.total)}</div><div class="s">cena ${U(s.priceUsd)} / ${s.priceCzk != null ? N(s.priceCzk, 2) + ' Kč' : '–'} (${DK(s.lastPriceDay)})</div></div>
       <div class="card kpi"><h3>Drženo déle než 3 roky</h3><div class="v ok">${N(s.oldAda)} ${SY}</div><div class="s">osvobozeno časovým testem · ${MA(s.oldAda)}</div></div>
       <div class="card kpi"><h3>Drženo kratší dobu</h3><div class="v warn">${N(s.youngAda)} ${SY}</div><div class="s">${MA(s.youngAda)} · průměrná doba držení všeho ${N(s.avgHeldDays / 365.25, 1)} roku</div></div>
+      ${(() => { const g = sinceStart(SYM); if (!g || g.gain == null || (g.inv < 0.5 && g.proceeds < 0.5 && !g.value)) return '';
+        return `<div class="card kpi"><h3>Zisk od začátku</h3><div class="v ${CLS(g.gain)}">${g.pct != null ? PCT(g.pct) : SG(g.gain, MK)}</div>
+          <div class="s">${g.pct != null ? SG(g.gain, MK) + ' · ' : ''}vloženo ${MK(g.inv)}</div><div class="s">dnes ${MK(g.value)}${g.proceeds > 0.5 ? ' + prodeje ' + MK(g.proceeds) : ''}${rewTot.n ? ' · staking zdarma' : ''}</div>${g.invEst > 0.5 ? `<div class="s mut">z vloženého ${MK(g.invEst)} odhad – příchozí bez doloženého nákupu (cena v den příchodu)</div>` : ''}${g.noPrice ? `<div class="s warn">${g.noPrice}× nákup bez ceny – dej Aktualizovat</div>` : ''}${g.pct == null ? '<div class="s mut">bez nákupů – % nejde spočítat</div>' : ''}</div>`; })()}
       ${rewTot.n ? '' : '<!--'}<div class="card kpi"><h3>Staking celkem</h3><div class="v">${N(rewTot.ada)} ${SY}</div><div class="s">${rewTot.n} odměn · ${CUR() === 'USD' ? U(rewTot.usd) : K(rewTot.czk)} (v den připsání)</div></div>${rewTot.n ? '' : '-->'}
     </div>`;
     h += `<div class="card"><h3>Rok ${s.year}: kolik můžeš prodat bez daně</h3>
@@ -525,6 +528,40 @@
     return h + '</div>';
   }
   /** skutečně držené množství: blockchain + kladné zůstatky na burzách (u ADA evidence, ta je odsouhlasená) */
+  /* ---------- zisk od začátku (celkový výnos) ----------
+     zisk = dnešní hodnota + peníze z prodejů − vše vložené do nákupů (vč. poplatků).
+     Odměny ze stakingu / earn jsou zdarma (čistý zisk). Příchozí bez doloženého nákupu se berou
+     jako vložené v tržní ceně v den příchodu. Směny krypto→krypto se do vložených peněz portfolia nepočítají dvakrát. */
+  const FIATQ = new Set(['CZK', 'EUR', 'USD', 'USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD', 'USDP', 'EURC', 'EURI']);
+  function sinceStart(sym) {
+    const r = ALL.R[sym]; if (!r) return null;
+    const s = r.summary;
+    let inv = 0, invFiat = 0, invEst = 0, noPrice = 0;
+    for (const e of r.events) {
+      if (e.rk !== 'buy' && e.rk !== 'incoming') continue;
+      if (e.valueCzk == null) { noPrice++; continue; }
+      const c = e.valueCzk + (e.feeCzk || 0);
+      inv += c; if (!e.quoteCur || FIATQ.has(String(e.quoteCur).toUpperCase())) invFiat += c;
+      if (e.rk === 'incoming') invEst += c;
+    }
+    const proceeds = r.sales.reduce((a, x) => a + (x.income || 0), 0);
+    const pC = s.priceCzk != null ? s.priceCzk : (s.priceUsd != null && s.usdCzk ? s.priceUsd * s.usdCzk : null);
+    const value = pC != null ? holdings(sym, s) * pC : null;
+    const gain = value != null ? value + proceeds - inv : null;
+    return { inv, invFiat, invEst, proceeds, value, gain, pct: inv > 0.5 && gain != null ? gain / inv * 100 : null, noPrice };
+  }
+  const MK = czk => { if (czk == null || !isFinite(czk)) return '–'; const r = R && R.summary.usdCzk; return CUR() === 'USD' && r ? U(czk / r) : K(czk); };
+  const SG = (x, f) => x == null || !isFinite(x) ? '–' : (x > 0 ? '+' : x < 0 ? '−' : '') + f(Math.abs(x));
+  const PCT = x => SG(x, v => C.fmtN(v, v >= 100 ? 0 : 1) + ' %');
+  const CLS = x => x == null ? '' : x > 0 ? 'ok' : x < 0 ? 'bad' : '';
+  function sinceCell(g) {
+    if (!g || g.gain == null) return '<span class="mut">–</span>';
+    const tip = `vloženo ${MK(g.inv)}${g.invEst > 0.5 ? ` (z toho ${MK(g.invEst)} odhad – příchozí bez doloženého nákupu, v ceně v den příchodu)` : ''} · prodeje ${MK(g.proceeds)} · dnes ${MK(g.value)}`;
+    return g.pct != null
+      ? `<span title="${esc(tip)}"><b class="${CLS(g.gain)}">${PCT(g.pct)}</b><br><span class="small ${CLS(g.gain)}">${SG(g.gain, MK)}</span></span>`
+      : `<span title="${esc(tip)}"><span class="${CLS(g.gain)}">${SG(g.gain, MK)}</span><br><span class="small mut">bez nákupů</span></span>`;
+  }
+
   function holdings(sym, s) {
     if (sym === 'ADA') return s.total;
     const cd = (state.coinData || {})[sym], c = COINS[sym] || {};
@@ -538,9 +575,11 @@
       const qty = holdings(sym, s);
       const val = s.priceUsd != null ? qty * s.priceUsd : null;
       const y = r.years[s.year] || {};
-      return { sym, c, r, s, qty, val, ownIncome: state.settings.includeExemptInLimit ? (y.income || 0) : (y.incomeNon || 0) };
+      return { sym, c, r, s, qty, val, g: sinceStart(sym), ownIncome: state.settings.includeExemptInLimit ? (y.income || 0) : (y.incomeNon || 0) };
     }).filter(x => x.qty > 1e-9 || x.ownIncome > 0 || x.sym === 'ADA');
     const totUsd = rows.reduce((a, x) => a + (x.val || 0), 0);
+    const tg = rows.reduce((a, x) => { const g = x.g; if (g && g.gain != null) { a.gain += g.gain; a.inv += g.invFiat; a.n++; } return a; }, { gain: 0, inv: 0, n: 0 });
+    const tgPct = tg.inv > 0.5 ? tg.gain / tg.inv * 100 : null;
     const cy = new Date().getFullYear();
     const manual = +((state.settings.otherCryptoIncome || {})[cy] || 0);
     const used = rows.reduce((a, x) => a + x.ownIncome, 0) + manual;
@@ -549,10 +588,11 @@
     const ys = {};
     for (const x of rows) for (const y of Object.values(x.r.years)) { const o = ys[y.year] = ys[y.year] || { year: y.year, by: {}, tot: 0, rewards: 0 }; const inc = state.settings.includeExemptInLimit ? y.income : y.incomeNon; if (inc) { o.by[x.sym] = inc; o.tot += inc; } o.rewards += y.rewardsCzk || 0; }
     const yl = Object.values(ys).filter(o => o.tot > 0 || o.rewards > 0).sort((a, b) => b.year - a.year);
-    return `<div class="card"><h3>Všechny mince – portfolio</h3><div class="tw"><table><tr><th>Mince</th><th class="n">Množství</th><th class="n">Cena</th><th class="n">Hodnota</th><th class="n">> 3 roky</th><th class="n">≤ 3 roky</th><th></th></tr>
-      ${rows.map(x => `<tr><td><b>${esc(x.sym)}</b> <span class="small mut">${esc(x.c.name || '')}</span></td><td class="n">${C.fmtN(x.qty, x.c.dp || 4)}</td><td class="n">${PU(x.s.priceUsd)}</td><td class="n"><b>${MU(x.val)}</b></td>
+    return `<div class="card"><h3>Všechny mince – portfolio</h3><div class="tw"><table><tr><th>Mince</th><th class="n">Množství</th><th class="n">Cena</th><th class="n">Hodnota</th><th class="n">Od začátku</th><th class="n">> 3 roky</th><th class="n">≤ 3 roky</th><th></th></tr>
+      ${rows.map(x => `<tr><td><b>${esc(x.sym)}</b> <span class="small mut">${esc(x.c.name || '')}</span></td><td class="n">${C.fmtN(x.qty, x.c.dp || 4)}</td><td class="n">${PU(x.s.priceUsd)}</td><td class="n"><b>${MU(x.val)}</b></td><td class="n">${sinceCell(x.g)}</td>
         <td class="n ok">${C.fmtN(x.s.oldAda, x.c.dp || 4)}</td><td class="n warn">${C.fmtN(x.s.youngAda, x.c.dp || 4)}</td><td><button class="btn sec small" data-coin="${esc(x.sym)}">otevřít</button></td></tr>`).join('')}
-      <tr><td><b>Celkem</b></td><td></td><td></td><td class="n"><b>${MU(totUsd)}</b></td><td></td><td></td><td></td></tr></table></div>
+      <tr><td><b>Celkem</b></td><td></td><td></td><td class="n"><b>${MU(totUsd)}</b></td><td class="n">${tg.n ? `<b class="${CLS(tg.gain)}">${tgPct != null ? PCT(tgPct) : ''}</b><br><span class="small ${CLS(tg.gain)}">${SG(tg.gain, MK)}</span>` : ''}</td><td></td><td></td><td></td></tr></table></div>
+      <p class="small mut">Od začátku = dnešní hodnota + peníze z prodejů − vše, co jsi do mince vložil (nákupy vč. poplatků). Odměny ze stakingu jsou čistý zisk. Příchozí bez doloženého nákupu se počítají v ceně v den příchodu. Podrobnosti po najetí myší.</p>
       <p class="small mut">Množství = blockchain + zůstatky na burzách. Sloupce 3 roky jsou z evidence (loty) – pokud se liší od množství, otevři minci a dořeš upozornění. ADA bez tokenů (tokeny viz Portfolio u ADA). Mince bez dat se nezobrazují.</p></div>
       ${chartsCard(rows.map(x => x.sym))}
       <div class="card"><h3>Rok ${cy}: společný limit 100 000 Kč (všechny kryptoměny)</h3>
