@@ -2,7 +2,9 @@ package cz.adadane.app;
 
 import android.app.Activity;
 import android.content.ContentValues;
+import android.Manifest;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.graphics.Insets;
 import android.net.Uri;
@@ -17,6 +19,7 @@ import android.util.Base64;
 import android.view.View;
 import android.view.WindowInsets;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -45,6 +48,8 @@ import java.util.concurrent.Executors;
 
 public class MainActivity extends Activity {
     private static final int REQ_FILE = 11;
+    private static final int REQ_CAM = 12;
+    private PermissionRequest camReq; // čeká na povolení kamery (skenování QR z PC)
     private static final Set<String> ALLOWED = new HashSet<>(Arrays.asList(
             "api.koios.rest", "data-api.binance.vision", "api.binance.com", "www.cnb.cz", "api.coingecko.com", "mempool.space", "eth.blockscout.com", "api.mainnet-beta.solana.com", "blockstream.info", "api.github.com", "raw.githubusercontent.com"));
 
@@ -79,9 +84,26 @@ public class MainActivity extends Activity {
         s.setDomStorageEnabled(true);
         s.setAllowFileAccess(true);
         s.setAllowContentAccess(true);
+        s.setMediaPlaybackRequiresUserGesture(false);
         web.setBackgroundColor(Color.parseColor("#0f1420"));
         web.addJavascriptInterface(new Bridge(), "AndroidBridge");
         web.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onPermissionRequest(final PermissionRequest req) {
+                boolean video = false;
+                for (String r : req.getResources()) if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(r)) video = true;
+                if (!video) { req.deny(); return; }
+                runOnUiThread(() -> {
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        req.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                    } else {
+                        if (camReq != null) camReq.deny();
+                        camReq = req;
+                        requestPermissions(new String[]{Manifest.permission.CAMERA}, REQ_CAM);
+                    }
+                });
+            }
+
             @Override
             public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> cb, FileChooserParams params) {
                 if (fileCb != null) fileCb.onReceiveValue(null);
@@ -123,6 +145,29 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQ_CAM && camReq != null) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED)
+                camReq.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            else camReq.deny();
+            camReq = null;
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    /** synchronizace s PC: jen http na soukromou IPv4 adresu domácí sítě a jen cesty /sync/ */
+    private static boolean isLanSync(URL u) {
+        if (!"http".equals(u.getProtocol()) || u.getPath() == null || !u.getPath().startsWith("/sync/")) return false;
+        String[] p = u.getHost().split("\\.");
+        if (p.length != 4) return false;
+        int[] a = new int[4];
+        try { for (int i = 0; i < 4; i++) { a[i] = Integer.parseInt(p[i]); if (a[i] < 0 || a[i] > 255) return false; } }
+        catch (NumberFormatException e) { return false; }
+        return a[0] == 10 || (a[0] == 172 && a[1] >= 16 && a[1] <= 31) || (a[0] == 192 && a[1] == 168);
+    }
+
+    @Override
     public void onBackPressed() {
         if (web != null && web.canGoBack()) web.goBack();
         else super.onBackPressed();
@@ -154,13 +199,14 @@ public class MainActivity extends Activity {
                 HttpURLConnection c = null;
                 try {
                     URL u = new URL(url);
-                    if (!"https".equals(u.getProtocol()) || !ALLOWED.contains(u.getHost())) {
+                    boolean lan = isLanSync(u);
+                    if (!lan && (!"https".equals(u.getProtocol()) || !ALLOWED.contains(u.getHost()))) {
                         callback(id, false, 403, "host neni povolen: " + u.getHost());
                         return;
                     }
                     c = (HttpURLConnection) u.openConnection();
-                    c.setConnectTimeout(20000);
-                    c.setReadTimeout(60000);
+                    c.setConnectTimeout(lan ? 2500 : 20000);
+                    c.setReadTimeout(lan ? 30000 : 60000);
                     c.setRequestMethod(method);
                     c.setRequestProperty("User-Agent", "ada-dane-android/0.1");
                     c.setRequestProperty("Accept", "application/json, text/plain, */*");

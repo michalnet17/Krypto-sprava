@@ -1,4 +1,4 @@
-Krypto sprava 0.3.6 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
+Krypto sprava 0.4.0 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
 =============================================================================
 
 Windows
@@ -32,10 +32,22 @@ PDF zprava: Export -> PDF otevre zpravu v prohlizeci -> "Ulozit jako PDF" (vsech
 
 Android
 -------
-BUILD-APK.bat -> files\KryptoSprava-0.3.6-debug.apk (Gradle wrapper se zkopiruje ze slozky
+BUILD-APK.bat -> files\KryptoSprava-0.4.0-debug.apk (Gradle wrapper se zkopiruje ze slozky
 v promenne GRADLE_WRAPPER_FROM, SDK z %LOCALAPPDATA%\Android\Sdk, platforma 35). Jednodussi: GitHub Actions.
 Exporty CSV z telefonu jdou do Stazene soubory/Krypto-sprava.
-Data PC a telefonu jsou oddelena - prenos: Nastaveni -> Zaloha (JSON) -> Obnovit.
+Data PC a telefonu jsou oddelena - prenos: Synchronizace (nize) nebo Nastaveni -> Zaloha (JSON) -> Obnovit.
+
+Synchronizace PC <-> mobil (0.4.0)
+----------------------------------
+PC: Nastaveni -> Synchronizace s mobilem -> Zapnout (ukaze QR kod).
+Mobil: Nastaveni -> Synchronizace s PC -> Naskenovat QR (appka se zepta na kameru)
+       nebo vlozit parovaci kod (text pod QR).
+Prenasi se jen nastaveni: adresy, xpub, exporty z burz, rucni upravy. Data z blockchainu
+si stahuje kazde zarizeni samo - mobil funguje i mimo domov. Synchronizuje se pri otevreni
+appky v mobilu (nebo tlacitkem), kdyz je mobil na stejne Wi-Fi a na PC bezi appka.
+Prenos je sifrovany (AES-GCM, klic jen v QR kodu), nejde pres zadny cizi server.
+Windows se pri prvnim zapnuti zepta na povoleni ve firewallu - povol "Soukrome site".
+Port: 8766 (zmena: promenna ADA_DANE_SYNC_PORT).
 
 Dalsi mince (0.2.0)
 -------------------

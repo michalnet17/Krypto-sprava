@@ -2,16 +2,21 @@
 """Krypto sprava - lokalni server pro PC (jen standardni knihovna Pythonu).
 Obsluhuje web/ , uklada stav do data/state.json a predava HTTP dotazy na povolene API (Koios, Binance, CNB).
 """
-import json, os, sys, shutil, subprocess, tempfile, threading, time, webbrowser, urllib.request, urllib.error, ssl
+import json, os, sys, shutil, subprocess, tempfile, threading, time, webbrowser, urllib.request, urllib.error, ssl, socket, hmac
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
-VERSION = '0.3.2'
+VERSION = '0.4.0'
 PORT = int(os.environ.get('ADA_DANE_PORT', '8765'))
 BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, 'web')
 DATA = os.path.join(BASE, 'data')
 STATE = os.path.join(DATA, 'state.json')
+SYNC_CFG = os.path.join(DATA, 'sync.json')        # token pro mobil (jen otisk tajneho klice - data jsou sifrovana v appce)
+SYNC_OUT = os.path.join(DATA, 'sync_outbox.json')  # sifrovane nastaveni z PC pro mobil
+SYNC_IN = os.path.join(DATA, 'sync_inbox.json')    # sifrovane nastaveni z mobilu pro PC
+SYNC_PORT = int(os.environ.get('ADA_DANE_SYNC_PORT', str(PORT + 1)))
+SYNC_MAX = 50 * 1024 * 1024
 ALLOWED = {'api.koios.rest', 'data-api.binance.vision', 'api.binance.com', 'www.cnb.cz', 'api.coingecko.com', 'mempool.space', 'eth.blockscout.com', 'api.mainnet-beta.solana.com', 'blockstream.info', 'api.github.com', 'raw.githubusercontent.com'}
 os.makedirs(DATA, exist_ok=True)
 
@@ -123,6 +128,13 @@ class H(SimpleHTTPRequestHandler):
             return
         if self.path == '/api/ping':
             return self._json(200, {'ok': True, 'platform': 'pc', 'version': VERSION, 'ssl': SSL_SRC, 'python': sys.version.split()[0]})
+        if self.path == '/api/sync/info':
+            return self._json(200, sync_info())
+        if self.path == '/api/sync/inbox':
+            txt = _read(SYNC_IN)
+            if txt is None:
+                return self._json(200, {'ok': True, 'blob': None})
+            return self._json(200, {'ok': True, 'blob': txt})
         return super().do_GET()
 
     def do_POST(self):
@@ -157,6 +169,21 @@ class H(SimpleHTTPRequestHandler):
             if code >= 400:
                 txt = txt[:2000]
             return self._json(200, {'ok': 200 <= code < 400, 'status': code, 'body': txt, 'via': via})
+        if self.path == '/api/sync/setup':
+            req = json.loads(self._body().decode('utf-8') or '{}')
+            return self._json(200, sync_setup(req))
+        if self.path == '/api/sync/outbox':
+            data = self._body()
+            if len(data) > SYNC_MAX:
+                return self._json(413, {'ok': False})
+            _write(SYNC_OUT, data)
+            return self._json(200, {'ok': True})
+        if self.path == '/api/sync/inbox/clear':
+            try:
+                os.remove(SYNC_IN)
+            except OSError:
+                pass
+            return self._json(200, {'ok': True})
         if self.path.startswith('/api/save?name='):
             name = os.path.basename(urllib.request.unquote(self.path.split('=', 1)[1]))
             out = os.path.join(BASE, 'exporty')
@@ -229,6 +256,141 @@ def _kill_old_server_posix():
     return bool(pids)
 
 
+# ---------- synchronizace s mobilem (lokalni sit) ----------
+# Na sit (0.0.0.0:SYNC_PORT) se vystavuji JEN tyto dva endpointy, vzdy s tokenem.
+# Obsah je sifrovany AES-GCM klicem, ktery zna jen PC a sparovany mobil (z QR kodu) - server ho nema.
+_sync = {'srv': None, 'error': None, 'last': None}
+
+
+def _read(p):
+    try:
+        with open(p, 'r', encoding='utf-8') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def _write(p, data):
+    tmp = p + '.tmp'
+    with open(tmp, 'wb') as f:
+        f.write(data)
+    os.replace(tmp, p)
+
+
+def _sync_cfg():
+    try:
+        return json.loads(_read(SYNC_CFG) or 'null') or {}
+    except ValueError:
+        return {}
+
+
+def lan_ips():
+    ips = []
+    try:  # adresa rozhrani s vychozi trasou (nic se neposila)
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(('192.0.2.1', 9))
+        ips.append(s.getsockname()[0])
+        s.close()
+    except OSError:
+        pass
+    try:
+        for info in socket.getaddrinfo(socket.gethostname(), None, socket.AF_INET):
+            ips.append(info[4][0])
+    except OSError:
+        pass
+    out = []
+    for ip in ips:
+        if ip.startswith('127.') or ip in out:
+            continue
+        a = [int(x) for x in ip.split('.')]
+        if a[0] == 10 or (a[0] == 172 and 16 <= a[1] <= 31) or (a[0] == 192 and a[1] == 168):
+            out.append(ip)
+    return out
+
+
+class SyncH(SimpleHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        pass
+
+    def _json(self, code, obj):
+        b = json.dumps(obj).encode('utf-8')
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json; charset=utf-8')
+        self.send_header('Content-Length', str(len(b)))
+        self.send_header('Cache-Control', 'no-store')
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _auth(self):
+        tok = _sync_cfg().get('token') or ''
+        got = self.headers.get('X-Sync-Token') or ''
+        if tok and hmac.compare_digest(tok.encode(), got.encode()):
+            _sync['last'] = int(time.time() * 1000)
+            return True
+        time.sleep(0.5)
+        self._json(403, {'ok': False})
+        return False
+
+    def do_GET(self):
+        if self.path == '/sync/blob':
+            if not self._auth():
+                return
+            return self._json(200, {'ok': True, 'app': 'krypto-sprava', 'version': VERSION, 'blob': _read(SYNC_OUT)})
+        self._json(404, {'ok': False})
+
+    def do_POST(self):
+        if self.path == '/sync/push':
+            if not self._auth():
+                return
+            n = int(self.headers.get('Content-Length') or 0)
+            if n <= 0 or n > SYNC_MAX:
+                return self._json(413, {'ok': False})
+            _write(SYNC_IN, self.rfile.read(n))
+            return self._json(200, {'ok': True})
+        self._json(404, {'ok': False})
+
+
+def sync_start():
+    if _sync['srv'] is not None:
+        return
+    try:
+        srv = ThreadingHTTPServer(('0.0.0.0', SYNC_PORT), SyncH)
+    except OSError as e:
+        _sync['error'] = 'port %d: %s' % (SYNC_PORT, e)
+        return
+    _sync['srv'], _sync['error'] = srv, None
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+
+
+def sync_stop():
+    srv, _sync['srv'] = _sync['srv'], None
+    if srv is not None:
+        threading.Thread(target=lambda: (srv.shutdown(), srv.server_close()), daemon=True).start()
+
+
+def sync_info():
+    c = _sync_cfg()
+    return {'ok': True, 'enabled': bool(c.get('token')), 'running': _sync['srv'] is not None, 'error': _sync['error'],
+            'ips': lan_ips(), 'port': SYNC_PORT, 'lastPhone': _sync['last'], 'inbox': os.path.exists(SYNC_IN)}
+
+
+def sync_setup(req):
+    tok = str(req.get('token') or '')
+    if tok:
+        if len(tok) < 32:
+            return {'ok': False, 'error': 'kratky token'}
+        _write(SYNC_CFG, json.dumps({'token': tok}).encode('utf-8'))
+        sync_start()
+    else:
+        for p in (SYNC_CFG, SYNC_OUT, SYNC_IN):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+        sync_stop()
+    return sync_info()
+
+
 def main():
     try:
         srv = ThreadingHTTPServer(('127.0.0.1', PORT), H)
@@ -250,6 +412,8 @@ def main():
             webbrowser.open('http://127.0.0.1:%d/' % PORT)
             return
     url = 'http://127.0.0.1:%d/' % PORT
+    if _sync_cfg().get('token'):
+        sync_start()
     print('Krypto sprava bezi na ' + url)
     print('Data: ' + STATE)
     print('Okno nezaviraj, dokud appku pouzivas. Ukonceni: Ctrl+C nebo zavri okno.')

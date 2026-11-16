@@ -43,13 +43,13 @@
   const KIND = { incoming: 'příchozí (původ neznámý)', buy: 'nákup', sell: 'prodej', fee: 'poplatek', income: 'příjem', reward: 'staking', refund: 'vratka', transfer: 'převod', gift: 'ztráta/dar', gone: 'odešlo (nevrátilo se)' };
   const FLOW = { withdraw: 'výběr z burzy', deposit: 'vklad na burzu', chain_in: 'příchozí', chain_out: 'odchozí' };
 
-  let state = null, R = null, tab = 'prehled', busy = false;
+  let state = null, R = null, tab = 'prehled', busy = false, PR = null;
   const ui = { year: 'all', onlyTodo: false, q: '' };
 
   function defState() {
     return { v: 1, settings: { stakeAddresses: [], koiosToken: '', stakingTaxedOnReceipt: true, includeExemptInLimit: true, limitCzk: 100000, otherCryptoIncome: {} }, imports: [], overrides: {}, chain: null, prices: null, lastSync: null, coin: 'ADA', coinData: {} };
   }
-  async function save() { try { await Platform.saveState(state); } catch (e) { status('Uložení selhalo: ' + e.message, true); } }
+  async function save() { try { await Platform.saveState(state); if (PR) PR.onSaved().catch(e => log('Synchronizace: ' + e.message)); } catch (e) { status('Uložení selhalo: ' + e.message, true); } }
   const logBuf = []; let lastError = null;
   function status(t, bad) {
     const s = $('#status'); s.textContent = t; s.classList.toggle('hidden', !t); s.style.color = bad ? '#fca5a5' : '';
@@ -586,6 +586,7 @@
         return `<tr><td class="small">${esc(im.fileName)}</td><td>${esc(im.format)}</td><td>${esc(im.source)}</td><td class="n">${cnt}</td><td class="small mut">${esc(note)}</td><td><button class="btn bad small" data-del="${i}">×</button></td></tr>`;
       }).join('') || '<tr><td colspan="6" class="mut">Zatím nic.</td></tr>'}
       </table></div>
+    ${pairCard()}
     <div class="card"><h3>Záloha</h3><button class="btn sec" id="backup">Uložit zálohu (JSON)</button> <label class="btn sec">Obnovit ze zálohy<input type="file" id="restore" accept=".json" class="hidden"></label>
       <button class="btn bad" id="resetChain">Znovu stáhnout blockchain</button></div>
     <div class="card"><h3>O aplikaci</h3>
@@ -615,6 +616,72 @@
   }
 
   /* ---------- render + události ---------- */
+  /* ---------- synchronizace PC ↔ mobil ---------- */
+  const ui2 = { scanning: false };
+  function pairCard() {
+    const p = state.pair;
+    if (!Platform.isAndroid) {
+      if (!p) return `<div class="card"><h3>Synchronizace s mobilem</h3>
+        <p class="small">Mobil s appkou si přes <b>domácí Wi-Fi</b> převezme a průběžně vyměňuje nastavení s PC – adresy, xpub, exporty z burz a ruční úpravy. Data z blockchainu si mobil stahuje sám, takže funguje i mimo domov; synchronizovat je potřeba jen změny. Nic nejde přes cizí server, přenos je šifrovaný.</p>
+        <button class="btn" id="pairOn">Zapnout a spárovat mobil</button></div>`;
+      return `<div class="card"><h3>Synchronizace s mobilem</h3>
+        <div class="pairbox"><div id="pairQr" class="pairqr"><span class="small mut">načítám…</span></div>
+        <div style="flex:1;min-width:220px">
+          <p class="small">V mobilu otevři <b>Krypto správa → Nastavení → Synchronizace s PC</b> a naskenuj QR kód. Mobil musí být na stejné Wi-Fi jako tohle PC.</p>
+          <div id="pairStat" class="small mut"></div>
+          <details class="small"><summary>Párovací kód jako text</summary><div id="pairCode" class="mono small" style="word-break:break-all;margin:6px 0"></div><button class="btn sec small" id="pairCopy">Kopírovat kód</button></details>
+          <div class="row2"><button class="btn sec small" id="pairNew">Nový párovací kód</button> <button class="btn bad small" id="pairOff">Vypnout synchronizaci</button></div>
+          <p class="small mut">Kód je tajný – kdo ho má, vidí tvoje adresy. Nový kód odpojí dříve spárovaný mobil.</p>
+        </div></div></div>`;
+    }
+    if (!p) return `<div class="card"><h3>Synchronizace s PC</h3>
+      <p class="small">Na PC otevři <b>Nastavení → Synchronizace s mobilem → Zapnout</b> a naskenuj zobrazený QR kód. Mobil musí být na stejné Wi-Fi.</p>
+      ${ui2.scanning ? `<video id="pairVideo" class="pairvideo" muted></video><div class="row2"><button class="btn sec" id="pairScanStop">Zrušit skenování</button></div>`
+        : `<div class="row2"><button class="btn" id="pairScan">Naskenovat QR z PC</button></div>`}
+      <details class="small"><summary>Nebo vlož párovací kód</summary><textarea id="pairCodeIn" rows="3" style="width:100%" placeholder="KS1:…"></textarea><button class="btn sec small" id="pairGo">Spárovat</button></details></div>`;
+    return `<div class="card"><h3>Synchronizace s PC</h3>
+      <p class="small">Spárováno s PC (${esc((p.lastHost || p.hosts[0]) + ':' + p.port)}). Synchronizuje se při otevření appky, když jsi na stejné Wi-Fi jako PC; mimo domov appka normálně funguje dál.</p>
+      <p class="small mut">${p.lastAt ? 'Naposledy ' + new Date(p.lastAt).toLocaleString('cs-CZ') + ' · ' + ({ same: 'beze změn', pull: 'převzato z PC', push: 'odesláno do PC' }[p.lastAct] || '') : 'Zatím nesynchronizováno.'}</p>
+      <div class="row2"><button class="btn" id="pairSync">Synchronizovat teď</button> <button class="btn bad small" id="pairUnpair">Zrušit spárování</button></div></div>`;
+  }
+  async function fillPair() {
+    const p = state.pair, box = $('#pairQr'); if (!box || !p || p.role !== 'pc') return;
+    const info = await PR.pcInfo();
+    if (!info) return;
+    const st = $('#pairStat');
+    if (!info.enabled || !info.running) {
+      box.innerHTML = ''; if (st) st.innerHTML = `<span style="color:#fca5a5">Server pro mobil neběží${info.error ? ' (' + esc(info.error) + ')' : ''}. Dej „Nový párovací kód“, případně restartuj appku.</span>`; return;
+    }
+    if (!info.ips.length) { box.innerHTML = ''; if (st) st.innerHTML = '<span style="color:#fca5a5">PC není připojené k žádné domácí síti.</span>'; return; }
+    const code = Pair.code(info.ips, info.port, p.k);
+    if (box.dataset.code !== code) { box.innerHTML = Pair.qrSvg(code); box.dataset.code = code; }
+    const c = $('#pairCode'); if (c && c.textContent !== code) c.textContent = code;
+    if (st) st.textContent = `Adresa PC: ${info.ips.join(', ')} · port ${info.port}` + (info.lastPhone ? ' · mobil naposledy ' + new Date(info.lastPhone).toLocaleString('cs-CZ') : ' · mobil se zatím nepřipojil');
+  }
+  async function pairHandle(id) {
+    try {
+      if (id === 'pairOn' || id === 'pairNew') {
+        if (id === 'pairNew' && !confirm('Vytvořit nový párovací kód? Dosud spárovaný mobil se odpojí a bude potřeba ho spárovat znovu.')) return true;
+        await PR.pcEnable(); render(); return true;
+      }
+      if (id === 'pairOff') { if (!confirm('Vypnout synchronizaci s mobilem?')) return true; await PR.pcDisable(); render(); return true; }
+      if (id === 'pairCopy') { const c = $('#pairCode'); if (c) { await navigator.clipboard.writeText(c.textContent); status('Párovací kód zkopírován.'); } return true; }
+      if (id === 'pairScan') {
+        ui2.scanning = true; render();
+        const v = $('#pairVideo');
+        try {
+          await PR.scan(v, async code => { ui2.scanning = false; render(); await PR.phonePair(code); render(); });
+        } catch (e) { ui2.scanning = false; render(); status('Kamera nejde spustit (' + (e.name || e.message) + '). Povol appce kameru, nebo vlož párovací kód ručně.', true); }
+        return true;
+      }
+      if (id === 'pairScanStop') { PR.stopScan(); ui2.scanning = false; render(); return true; }
+      if (id === 'pairGo') { const t = $('#pairCodeIn'); await PR.phonePair(t ? t.value : ''); render(); return true; }
+      if (id === 'pairSync') { await PR.phoneSync({ manual: true }); return true; }
+      if (id === 'pairUnpair') { if (!confirm('Zrušit spárování s PC? Data v mobilu zůstanou.')) return true; await PR.phoneUnpair(); render(); return true; }
+    } catch (e) { status('Synchronizace: ' + e.message, true); return true; }
+    return false;
+  }
+
   function render() {
     SYM = state.coin || 'ADA';
     if (SYM !== 'ALL' && !COINS[SYM]) SYM = 'ADA';
@@ -639,6 +706,7 @@
     $('#btnCur').textContent = CUR() === 'USD' ? '$ → Kč' : 'Kč → $';
     const bt = allMode ? 'Krypto správa' : `${ICON[SYM] || ''} ${SYM}`.trim();
     $('#brandTxt').textContent = bt; document.title = bt;
+    if (tab === 'nastaveni') fillPair();
   }
 
   async function handleFiles(files) {
@@ -725,6 +793,7 @@
   }
 
   document.addEventListener('click', async ev => {
+    if (ev.target && ev.target.id && /^pair/.test(ev.target.id) && await pairHandle(ev.target.id)) return;
     const t = ev.target;
     if (t.closest('#tabs button')) {
       const b = t.closest('#tabs button'); tab = b.dataset.tab; if (!busy) $('#log').classList.add('hidden'); render();
@@ -782,14 +851,14 @@
       if (!state.settings.stakeAddresses.length) { status('Zadej stake adresu (stake1…) nebo adresu peněženky (addr1…).', true); return; }
       status('Adresy uloženy, načítám…'); return doSync();
     }
-    if (t.id === 'backup') { const p = await Platform.saveFile(`ada_dane_zaloha_${C.dayKey(Date.now())}.json`, 'application/json', JSON.stringify(state)); status('Záloha: ' + p); return; }
+    if (t.id === 'backup') { const p = await Platform.saveFile(`ada_dane_zaloha_${C.dayKey(Date.now())}.json`, 'application/json', JSON.stringify(Object.assign({}, state, { pair: undefined }))); status('Záloha: ' + p); return; }
     if (t.id === 'resetChain') { if (confirm('Smazat stažená data z blockchainu a stáhnout znovu?')) { state.chain = null; await save(); doSync(); } return; }
   });
   document.addEventListener('change', async ev => {
     const t = ev.target;
     if (t.id === 'files') return handleFiles([...t.files]);
     if (t.id === 'coinSel') { state.coin = t.value; await save(); return render(); }
-    if (t.id === 'restore' && t.files[0]) { const s = JSON.parse(await readText(t.files[0])); if (s && s.settings) { state = Object.assign(defState(), s); await save(); render(); status('Obnoveno ze zálohy.'); } return; }
+    if (t.id === 'restore' && t.files[0]) { const s = JSON.parse(await readText(t.files[0])); if (s && s.settings) { const keep = state.pair; state = Object.assign(defState(), s); delete state.pair; if (keep) state.pair = keep; await save(); render(); status('Obnoveno ze zálohy.'); } return; }
     if (t.id === 'ySel') { ui.year = t.value; return render(); }
     if (t.id === 'onlyTodo') { ui.onlyTodo = t.checked; return render(); }
     // pole adres: jen uložit, NEpřekreslovat (jinak by zmizelo tlačítko, na které se právě kliká)
@@ -820,12 +889,16 @@
     try { state = Object.assign(defState(), await Platform.loadState() || {}); }
     catch (e) { $('#view').innerHTML = `<div class="warnbox">Appka neběží přes server. Na PC ji spouštěj přes <b>START-PC.bat</b>.<br>${esc(e.message)}</div>`; return; }
     state.settings = Object.assign(defState().settings, state.settings);
+    PR = Pair.create({ state: () => state, persist: () => Platform.saveState(state), refresh: render, status, log, isBusy: () => busy, http: Platform.http });
     render();
     const pg = await Platform.ping();
     // server se mění jen občas – varovat, jen když je starší než potřebná verze
-    const SERVER_MIN = '0.3.2';
+    const SERVER_MIN = '0.4.0';
     if (pg && pg.version !== null && vnum(pg.version) < vnum(SERVER_MIN)) status(`Běží stará verze serveru (${pg.version || 'starší'}), potřeba je ${SERVER_MIN}+. Zavři všechna okna konzole Krypto správa a spusť START-PC.bat znovu.`, true);
     checkUpdate(false);
+    if (state.pair && state.pair.role === 'pc') { PR.pcPoll(true); PR.publish(true); PR.pcCheckInbox(); }
+    if (!Platform.isAndroid) setInterval(() => { if (state.pair && tab === 'nastaveni' && $('#pairStat')) fillPair(); }, 5000);
+    if (state.pair && state.pair.role === 'phone') await PR.phoneSync({ auto: true });
     // automatická aktualizace, pokud jsou data starší než 12 h
     if (state.settings.stakeAddresses.length && (!state.lastSync || Date.now() - state.lastSync > 12 * 3600000)) doSync();
   })();

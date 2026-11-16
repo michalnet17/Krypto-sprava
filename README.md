@@ -10,6 +10,7 @@ Přehled kryptoměn, stakingu a **českých daní** na jednom místě – offlin
 - **Portfolio s grafy**, tokeny na Cardanu, přepínání Kč / USD
 - **Export** do CSV a přehledné **PDF zprávy** (celé období / rok / vybrané roky, volitelné části, adresy celé / zkrácené / skryté)
 - Windows, Linux, macOS a Android
+- **synchronizace PC ↔ mobil** přes domácí Wi-Fi (spárování QR kódem, šifrovaně, bez cloudu)
 
 ## Stažení
 
@@ -58,4 +59,4 @@ addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2
 - Nová verze: zvyš `VERSION` ve `web/core.js` (a `versionCode`/`versionName` v `android/app/build.gradle`), nahraj do `main` – zipy i APK se sestaví a vydají samy jako Release `vX.Y.Z`.
 - `donate.json` – aktuální donate adresa, appka si ji načítá (změna se projeví i ve starších verzích).
 
-Licence: [MIT](LICENSE)
+Licence: [MIT](LICENSE) · přibalené knihovny: [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT), [jsQR](https://github.com/cozmo/jsQR) (Apache 2.0, `web/vendor/LICENSE-jsQR.txt`)
