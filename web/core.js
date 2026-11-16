@@ -1,7 +1,7 @@
 /* Krypto správa – jádro (čistá logika, bez UI). Běží v prohlížeči i v Node (testy). */
 (function (root) {
   'use strict';
-  const VERSION = '0.4.3';
+  const VERSION = '0.4.4';
   const SHELLEY_EPOCH = 208, SHELLEY_START = 1596059091000, EPOCH_MS = 432000000;
   const DAY = 86400000, HOUR = 3600000;
   const STABLE_USD = new Set(['USD', 'USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD']);
@@ -610,11 +610,11 @@
 
     /* roky */
     const years = {};
-    const Y = y => (years[y] = years[y] || { year: y, salesAda: 0, income: 0, incomeExempt: 0, incomeNon: 0, costNon: 0, costAll: 0, adaExempt: 0, adaNon: 0, rewardsAda: 0, rewardsCzk: 0, rewardsUsd: 0, rewardsCount: 0, fees: 0, buysAda: 0, buysCzk: 0 });
+    const Y = y => (years[y] = years[y] || { year: y, salesAda: 0, income: 0, incomeExempt: 0, incomeNon: 0, costNon: 0, costAll: 0, adaExempt: 0, adaNon: 0, rewardsAda: 0, rewardsCzk: 0, rewardsUsd: 0, rewardsEur: 0, rewardsCount: 0, fees: 0, buysAda: 0, buysCzk: 0 });
     for (const s of sales) { const y = Y(s.year); y.salesAda += s.ada; y.income += s.income; y.incomeExempt += s.incomeExempt; y.incomeNon += s.incomeNon; y.costNon += s.costNon; y.costAll += s.costAll; y.adaExempt += s.adaExempt; y.adaNon += s.adaNon; }
     for (const e of evs) {
       const y = +e.day.slice(0, 4);
-      if (e.rk === 'reward') { const o = Y(y); o.rewardsAda += e.ada; o.rewardsCzk += e.valueCzk || 0; o.rewardsUsd += (e.usdPrice || 0) * e.ada; o.rewardsCount++; }
+      if (e.rk === 'reward') { const o = Y(y); o.rewardsAda += e.ada; o.rewardsCzk += e.valueCzk || 0; o.rewardsUsd += (e.usdPrice || 0) * e.ada; const er = PA.fxRate('EUR', e.day); if (er && e.valueCzk) o.rewardsEur += e.valueCzk / er; o.rewardsCount++; }
       if (e.rk === 'fee') Y(y).fees += e.ada;
       if (e.rk === 'buy') { const o = Y(+e.acqDay.slice(0, 4)); o.buysAda += e.ada; o.buysCzk += e.valueCzk || 0; }
     }
@@ -639,7 +639,7 @@
     const total = sum(open, l => l.ada), oldAda = sum(open.filter(l => l.exempt), l => l.ada), youngAda = total - oldAda;
     const lastPriceDay = PA.lastDay();
     const priceUsd = lastPriceDay ? PA.adaUsd(lastPriceDay) : null;
-    const usdCzk = PA.fxRate('USD', today);
+    const usdCzk = PA.fxRate('USD', today), eurCzk = PA.fxRate('EUR', today);
     const priceCzk = priceUsd != null && usdCzk != null ? priceUsd * usdCzk : null;
     const cy = +today.slice(0, 4), yNow = years[cy];
     const used100 = yNow.limitBase;
@@ -698,7 +698,7 @@
     if (disc.length && SYM === 'ADA') warnings.push({ type: 'wallet', text: `Nalezeno ${disc.length} dalších peněženek, kam šly výběry z burz – přidej je v Nastavení, ať je portfolio kompletní.` });
     return {
       version: VERSION, today, settings: S, events: evs.sort((a, b) => b.date - a.date), lots: open, allLots: lots, sales, years, warnings, unmatched, discovered: disc, destinations, sym: SYM, dp: DP, minAmt: MINAMT,
-      summary: { total, oldAda, youngAda, priceUsd, priceCzk, usdCzk, lastPriceDay, valueCzk: priceCzk != null ? total * priceCzk : null, oldValue, youngValue: priceCzk != null ? youngAda * priceCzk : null, year: cy, usedLimit: used100, remaining, limitAda: priceCzk ? remaining / priceCzk : null, youngSellable, freeTotal: oldAda + youngSellable, unlock, avgHeldDays: avgHeld, exchanges: exch, chainBalance: chainBal, actual, gap, shortfall }
+      summary: { total, oldAda, youngAda, priceUsd, priceCzk, usdCzk, eurCzk, lastPriceDay, valueCzk: priceCzk != null ? total * priceCzk : null, oldValue, youngValue: priceCzk != null ? youngAda * priceCzk : null, year: cy, usedLimit: used100, remaining, limitAda: priceCzk ? remaining / priceCzk : null, youngSellable, freeTotal: oldAda + youngSellable, unlock, avgHeldDays: avgHeld, exchanges: exch, chainBalance: chainBal, actual, gap, shortfall }
     };
   }
 
