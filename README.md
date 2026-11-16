@@ -1,3 +1,5 @@
+<p align="center"><img src="web/logo.svg" width="128" alt="Krypto správa logo"></p>
+
 # Krypto správa
 
 Přehled kryptoměn, stakingu a **českých daní** na jednom místě – offline, bez registrace, data zůstávají u tebe.
