@@ -9,7 +9,7 @@ for os in Windows Linux Mac; do
   cp -r web server.py README.txt "$d/"
   [ -f "docs/NAVOD-$os.pdf" ] && cp "docs/NAVOD-$os.pdf" "$d/NAVOD.pdf"
   case $os in
-    Windows) cp START-PC.bat "$d/";;
+    Windows) cp START-PC.bat ZASTUPCE-NA-PLOSE.bat "$d/";;
     Linux)   cp start-linux.sh "$d/"; chmod +x "$d/start-linux.sh";;
     Mac)     cp start-mac.command "$d/"; chmod +x "$d/start-mac.command";;
   esac
