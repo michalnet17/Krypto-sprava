@@ -332,6 +332,18 @@
   /** grafy (koláče) – složení portfolia */
   /* ---------- tokeny na sítích (ADA, ETH, SOL) pro přehled ---------- */
   const TOK_MIN_CZK = 10;
+  /** stav načtení tokenů ETH/SOL (proč tam nic není) */
+  function tokStatus() {
+    const out = [];
+    for (const net of ['ETH', 'SOL']) {
+      const cd = (state.coinData || {})[net]; if (!cd || !(cd.settings.sources || []).length) continue;
+      const ch = cd.chain || {};
+      if (ch.tokErr) out.push(`${net}: tokeny se nepodařilo načíst (${ch.tokErr}) – zkus Aktualizovat znovu, případně pošli log přes Nahlásit chybu`);
+      else if (!ch.tokens) out.push(`${net}: tokeny zatím nenačtené – dej Aktualizovat`);
+      else if (!ch.tokens.length) out.push(`${net}: na tvých adresách nejsou žádné tokeny`);
+    }
+    return out;
+  }
   function netTokens() {
     const S = state.settings, hid = S.hiddenTokens || {}, rUsd = RATES().usd, rows = [];
     const ch = state.chain;
@@ -635,7 +647,9 @@
     const tokUsd = allToks.filter(t => !t.hidden).reduce((a, t) => a + (t.val || 0), 0);
     const totUsd = rows.reduce((a, x) => a + (x.val || 0), 0) + tokUsd;
     const tokLogo = t => t.icon ? `<img class="tlogo" src="${esc(t.icon)}" data-txt="${esc(t.sym.slice(0, 2))}" alt="" loading="lazy" onerror="logoFail(this)">` : `<span class="tlogo">${esc(t.sym.slice(0, 2))}</span>`;
-    const tokRows = !allToks.length ? '' : `<tr class="tsep"><td colspan="8"><b>Tokeny na sítích</b> <span class="small mut">${toks.length} zobrazeno${nHid ? ` · ${nHid} skryto (bez ceny, pod ${TOK_MIN_CZK} Kč, podvodné nebo ručně)` : ''}</span>${nHid ? ` <button class="btn sec small" id="tokShowAll">${showAll ? 'schovat skryté' : 'zobrazit skryté'}</button>` : ''}</td></tr>
+    const tSt = tokStatus();
+    const tokRows = !allToks.length && !tSt.length ? '' : `<tr class="tsep"><td colspan="8"><b>Tokeny na sítích</b> <span class="small mut">${toks.length} zobrazeno · ${nHid} skryto</span> <button class="btn sec small" id="tokShowAll">${showAll ? 'schovat skryté' : `zobrazit skryté (${nHid})`}</button>
+      ${nHid ? `<div class="small mut">skryté = bez ceny, v hodnotě pod ${TOK_MIN_CZK} Kč, označené jako podvodné nebo skryté ručně</div>` : ''}${tSt.map(x => `<div class="small warn">${esc(x)}</div>`).join('')}</td></tr>
       ${toks.map(t => `<tr class="${t.hidden ? 'tokhid' : ''}"><td>${tokLogo(t)}<b>${esc(t.sym)}</b> <span class="pill">${t.net}</span>${t.name && t.name !== t.sym ? ` <span class="small mut">${esc(t.name)}</span>` : ''}<div class="small mut">${esc(t.where)}${t.hidden ? ` · <span class="warn">${t.why}</span>` : ''}</div></td>
         <td class="n">${C.fmtN(t.qty, t.dp)}</td><td class="n">${t.usd != null ? PU(t.usd) : '<span class="mut">–</span>'}</td><td class="n">${t.val != null ? `<b>${MU(t.val)}</b>` : '<span class="mut">–</span>'}</td><td class="n"><span class="mut">–</span></td>
         <td class="n ok">${t.old != null ? C.fmtN(t.old, t.dp) : '<span class="mut">–</span>'}</td><td class="n warn">${t.young != null ? C.fmtN(t.young, t.dp) : '<span class="mut">–</span>'}</td>

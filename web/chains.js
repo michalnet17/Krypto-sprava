@@ -33,61 +33,84 @@ const Chains = (() => {
   // dvě nezávislé služby se stejným API (Esplora) – když jedna nejde, použije se druhá
   const ESPLORA = ['https://mempool.space/api', 'https://blockstream.info/api'];
   let espIdx = 0;
-  async function esplora(path) {
+  async function esplora(path, prefer) {
     let err;
     // rychlé přepnutí: každá služba 1 pokus, celé kolo max. 3× (nečeká se zbytečně na nefunkční mempool)
+    const first = prefer != null ? prefer % ESPLORA.length : espIdx;
     for (let round = 0; round < 3; round++) {
       for (let k = 0; k < ESPLORA.length; k++) {
-        const i = (espIdx + k) % ESPLORA.length;
-        try { const j = await getJSON(ESPLORA[i] + path, { tries: 1 }); if (i !== espIdx) { espIdx = i; LOG(`BTC: používám ${ESPLORA[i].split('/')[2]}`); } return j; }
+        const i = (first + k) % ESPLORA.length;
+        try { const j = await getJSON(ESPLORA[i] + path, { tries: 1 }); if (prefer == null && i !== espIdx) { espIdx = i; LOG(`BTC: používám ${ESPLORA[i].split('/')[2]}`); } return j; }
         catch (e) { err = e; if (e.status === 400 || e.status === 404) throw e; }
       }
       await sleep(1500 * (round + 1));
     }
     throw err;
   }
-  async function btcAddrInfo(a) { const j = await esplora(`/address/${a}`); const c = j.chain_stats || {}, m = j.mempool_stats || {}; return { txs: (c.tx_count || 0) + (m.tx_count || 0), bal: (c.funded_txo_sum || 0) - (c.spent_txo_sum || 0) }; }
+  async function btcAddrInfo(a, prefer) { const j = await esplora(`/address/${a}`, prefer); const c = j.chain_stats || {}, m = j.mempool_stats || {}; return { txs: (c.tx_count || 0) + (m.tx_count || 0), ctx: c.tx_count || 0, bal: (c.funded_txo_sum || 0) - (c.spent_txo_sum || 0) }; }
+  /** úlohy souběžně ve 2 proudech – každý proud se ptá „svého“ serveru (mempool.space / blockstream.info) */
+  async function pool2(items, fn) {
+    const out = new Array(items.length); let next = 0;
+    const worker = async w => { while (next < items.length) { const i = next++; out[i] = await fn(items[i], w); await sleep(120); } };
+    await Promise.all(ESPLORA.map((_, w) => worker(w)));
+    return out;
+  }
   async function syncBTC(cd, log) {
-    LOG = log; log('BTC: dotazuji mempool.space / blockstream.info…');
+    LOG = log; log('BTC: dotazuji mempool.space + blockstream.info (2 proudy)…');
+    const t0 = Date.now();
     const K = window.Crypto2, ch = cd.chain = cd.chain || { raw: {}, addrs: {}, dec: 8 };
     ch.dec = 8; ch.raw = ch.raw || {}; ch.addrs = ch.addrs || {};
+    const prev = ch.addrs;
     // nový seznam adres se staví stranou – dokud se neprověří všechny, appka počítá se starým (jinak by evidence ukazovala 0)
     const addrs = {};
     const srcs = (cd.settings.sources || []).map(s => s.trim()).filter(Boolean);
-    const GAP = 20;
-    for (const src of srcs) {
-      if (/^[xyz]pub/i.test(src)) {
-        let info; try { info = K.parseXpub(src); } catch (e) { log('Neplatný xpub: ' + e.message); continue; }
-        const types = info.kind === 'any' ? ['p2wpkh', 'p2sh', 'p2pkh'] : [info.kind === 'p2sh' ? 'p2sh' : 'p2wpkh'];
-        for (const type of types) {
-          let typeUsed = false;
-          for (const chainIdx of [0, 1]) {
-            if (chainIdx === 1 && !typeUsed) break;
-            let idx = 0, unused = 0;
-            while (unused < GAP && idx < 1000) {
-              const batch = K.deriveAddresses(src, type, chainIdx, idx, 10);
-              for (const a of batch) {
-                const st = await btcAddrInfo(a); await sleep(120);
-                addrs[a] = { src: 'xpub', type, chain: chainIdx, idx, used: st.txs > 0, bal: st.bal };
-                if (st.txs > 0) { unused = 0; typeUsed = true; } else unused++;
-                idx++;
-                if (unused >= GAP) break;
-              }
-            }
-            log(`BTC ${type} ${chainIdx ? 'vracení' : 'příjem'}: prověřeno ${idx} adres, použité: ${Object.values(addrs).filter(x => x.type === type && x.chain === chainIdx && x.used).length}`);
+    const GAP = 20, SHORT = 5, BATCH = 10;
+    let nq = 0;
+    // nejdřív xpub, pak jednotlivé adresy (adresa, která už je v xpub, se znovu nedotazuje)
+    const xp = srcs.filter(s => /^[xyz]pub/i.test(s)), single = srcs.filter(s => !/^[xyz]pub/i.test(s));
+    for (const src of xp) {
+      let info; try { info = K.parseXpub(src); } catch (e) { log('Neplatný xpub: ' + e.message); continue; }
+      const types = info.kind === 'any' ? ['p2wpkh', 'p2sh', 'p2pkh'] : [info.kind === 'p2sh' ? 'p2sh' : 'p2wpkh'];
+      for (const type of types) {
+        // typ adres, který se při minulé kontrole ukázal jako nepoužívaný: stačí prvních 5 adres (peněženky začínají první adresou)
+        const pt = Object.values(prev).filter(v => v.src === 'xpub' && v.type === type && v.chain === 0);
+        let gap = pt.length >= GAP && !pt.some(v => v.used) ? SHORT : GAP;
+        let typeUsed = false;
+        for (const chainIdx of [0, 1]) {
+          if (chainIdx === 1 && !typeUsed) break;
+          let idx = 0, unused = 0;
+          while (unused < gap && idx < 1000) {
+            const n = Math.min(BATCH, Math.max(1, gap - unused));
+            const batch = K.deriveAddresses(src, type, chainIdx, idx, n);
+            const sts = await pool2(batch, (a, w) => btcAddrInfo(a, w)); nq += batch.length;
+            batch.forEach((a, k) => {
+              const st = sts[k];
+              addrs[a] = { src: 'xpub', type, chain: chainIdx, idx: idx + k, used: st.txs > 0, bal: st.bal, txs: st.ctx };
+              if (st.txs > 0) { unused = 0; typeUsed = true; gap = GAP; } else unused++;
+            });
+            idx += batch.length;
           }
+          log(`BTC ${type} ${chainIdx ? 'vracení' : 'příjem'}: prověřeno ${idx} adres, použité: ${Object.values(addrs).filter(x => x.type === type && x.chain === chainIdx && x.used).length}`);
         }
-      } else if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/.test(src)) {
-        const st = await btcAddrInfo(src); await sleep(120);
-        addrs[src] = { src: 'addr', used: st.txs > 0, bal: st.bal };
-      } else log('Neznámý BTC zdroj: ' + src.slice(0, 20));
+      }
     }
+    const lone = [];
+    for (const src of single) {
+      if (/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{20,}$/.test(src)) { if (!addrs[src]) lone.push(src); }
+      else log('Neznámý BTC zdroj: ' + src.slice(0, 20));
+    }
+    if (lone.length) {
+      const sts = await pool2(lone, (a, w) => btcAddrInfo(a, w)); nq += lone.length;
+      lone.forEach((a, k) => { addrs[a] = { src: 'addr', used: sts[k].txs > 0, bal: sts[k].bal, txs: sts[k].ctx }; });
+    }
+    // transakce jen u adres, kde přibyl potvrzený pohyb (počet potvrzených transakcí se změnil) – ostatní už jsou stažené
     const used = Object.entries(addrs).filter(([, v]) => v.used).map(([a]) => a);
-    log(`BTC: použitých adres ${used.length}, stahuji transakce…`);
-    for (const a of used) {
+    const todo = used.filter(a => { const p = prev[a]; return !(p && p.done && p.txs === addrs[a].txs); });
+    log(`BTC: použitých adres ${used.length}, nové pohyby u ${todo.length}${todo.length ? ', stahuji transakce…' : ''}`);
+    await pool2(todo, async (a, w) => {
       let lastSeen = null;
       for (let guard = 0; guard < 200; guard++) {
-        const list = await esplora(`/address/${a}/txs/chain${lastSeen ? '/' + lastSeen : ''}`); await sleep(150);
+        const list = await esplora(`/address/${a}/txs/chain${lastSeen ? '/' + lastSeen : ''}`, w); nq++; await sleep(120);
         let known = 0;
         for (const t of list) {
           if (!t.status || !t.status.confirmed) continue;
@@ -97,12 +120,18 @@ const Chains = (() => {
         if (list.length < 25 || known === list.length) break;
         lastSeen = list[list.length - 1].txid;
       }
+      addrs[a].doneNow = true;
+    });
+    // „done“ = transakce adresy jsou staženy (při stejném počtu transakcí se příště nestahují)
+    for (const [a, v] of Object.entries(addrs)) {
+      if (v.doneNow) { v.done = true; delete v.doneNow; }
+      else if (v.used && prev[a] && prev[a].done && prev[a].txs === v.txs) v.done = true;
     }
     // výměna najednou: adresy, zůstatek i transakce jsou v jednom okamžiku konzistentní
     ch.addrs = addrs;
     ch.balance = Object.values(addrs).reduce((s, v) => s + (v.bal || 0), 0) / 1e8;
     ch.at = Date.now();
-    log(`BTC: transakcí ${Object.keys(ch.raw).length}, zůstatek ${AdaCore.fmtN(ch.balance, 8)} BTC`);
+    log(`BTC: transakcí ${Object.keys(ch.raw).length}, zůstatek ${AdaCore.fmtN(ch.balance, 8)} BTC (${nq} dotazů, ${Math.round((Date.now() - t0) / 1000)} s)`);
   }
   /** kam šly výběry z burz (tx hash z exportu) – najde výstup s částkou výběru; ukládá do ch.wdDest */
   async function btcWithdrawDest(cd, items, log) {
@@ -287,8 +316,8 @@ const Chains = (() => {
   }
   /** tokeny se načítají až po hlavní minci; chyba tokenů nezastaví aktualizaci (zůstanou poslední známé) */
   async function syncTokens(ch, fn, log) {
-    try { ch.tokens = await fn(); ch.tokAt = Date.now(); }
-    catch (e) { log('Tokeny: ' + e.message.slice(0, 120) + (ch.tokens ? ' – ponechávám poslední známé' : '')); }
+    try { ch.tokens = await fn(); ch.tokAt = Date.now(); delete ch.tokErr; }
+    catch (e) { ch.tokErr = e.message.slice(0, 160); log('Tokeny: ' + ch.tokErr + (ch.tokens ? ' – ponechávám poslední známé' : '')); }
   }
 
   const RPC = 'https://api.mainnet-beta.solana.com', STAKE_PROG = 'Stake11111111111111111111111111111111111111';
