@@ -180,7 +180,9 @@
     if (isADA() && !state.settings.stakeAddresses.length && !state.imports.length) h += `<div class="warnbox">Začni v <b>Nastavení</b>: zadej stake adresu (stake1…) a nahraj exporty z burz. Pak klikni <b>Aktualizovat</b>.</div>`;
     h += vPortfolio(s);
     h += chartsCard([SYM]);
-    h += R.warnings.map(w => `<div class="warnbox">⚠ ${esc(w.text)}</div>`).join('');
+    h += R.warnings.filter(w => w.type !== 'wallet').map(w => `<div class="warnbox">⚠ ${esc(w.text)}</div>`).join('');
+    // nalezené peněženky: na Přehledu jen když evidence nesedí (jinak jen v Pohybech)
+    if (evGap() && discList().length) h += `<div class="warnbox">⚠ Nalezeno ${discList().length} dalších peněženek, kam šly výběry z burz – může to vysvětlovat rozdíl. Podrobnosti v záložce <b>Pohyby</b>.</div>`;
     h += `<div class="grid">
       <div class="card kpi"><h3>Celkem ${SYM}</h3><div class="v">${N(s.total)} ${SY}</div><div class="s">${MA(s.total)}</div><div class="s">cena ${U(s.priceUsd)} / ${s.priceCzk != null ? N(s.priceCzk, 2) + ' Kč' : '–'} (${DK(s.lastPriceDay)})</div></div>
       <div class="card kpi"><h3>Drženo déle než 3 roky</h3><div class="v ok">${N(s.oldAda)} ${SY}</div><div class="s">osvobozeno časovým testem · ${MA(s.oldAda)}</div></div>
@@ -489,6 +491,14 @@
   }
 
   /* ---------- Pohyby ---------- */
+  /* ---------- nalezené další peněženky (kam šly výběry z burz) ---------- */
+  const evGap = () => (R.warnings || []).some(w => w.type === 'gap');
+  const discList = () => { const ign = state.settings.ignoredWallets || {}; return (R.discovered || []).filter(d => !ign[d.stake]); };
+  function discBox() {
+    const L = discList(); if (!L.length) return '';
+    return `<div class="warnbox" style="margin-top:10px"><b>Nalezené další peněženky</b> (šly na ně výběry z burz). Přidej jen tu, která je <b>tvoje</b> – appka pak načte i její zůstatek:${L.map(d => `<div class="row2"><span class="small" style="word-break:break-all">${esc(d.stake)}</span><span class="small mut">${d.count}× výběr, ${N(d.ada)} ${SY} (${esc(d.sources.join(', '))})</span><button class="btn small" data-addstake="${esc(d.stake)}">Přidat</button> <button class="btn sec small" data-ignwallet="${esc(d.stake)}">Není moje</button></div>`).join('')}</div>`;
+  }
+
   function vPohyby() {
     let list = R.events.filter(e => e.rk !== 'reward');
     const isTodo = e => !e.overridden && e.ada >= COIN().minAmt && (e.rk === 'incoming' || ((e.flow === 'withdraw' || e.flow === 'deposit') && e.unmatched));
@@ -503,7 +513,7 @@
       const cur = (OVR()[e.id] || {}).kind || '';
       return `<select data-ov="${esc(e.id)}">${base.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
     };
-    return `<div class="card"><div class="filters">
+    return `${discBox()}<div class="card"><div class="filters">
       <label><input type="checkbox" id="onlyTodo" ${ui.onlyTodo ? 'checked' : ''}> jen k vyřešení (${todo}: příchozí bez dokladu, nespárované výběry/vklady burz)</label>
       <input type="text" id="q" placeholder="hledat (burza, hash…)" value="${esc(ui.q)}">
       <button class="btn sec small" data-exp="events">Export CSV</button></div>
@@ -562,7 +572,7 @@
       <div class="row2">CoinGecko demo API klíč (nepovinné, pro ceny tokenů – zdarma na coingecko.com): <input type="text" id="cgKey" value="${esc(S.cgKey || '')}" style="flex:1;min-width:160px"></div>
       <button class="btn" id="saveStakes">Uložit a načíst</button>
       ${stakeList}
-      ${(R.discovered || []).length ? `<div class="warnbox" style="margin-top:10px"><b>Nalezené další peněženky</b> (šly na ně výběry z burz):${R.discovered.map(d => `<div class="row2"><span class="small" style="word-break:break-all">${esc(d.stake)}</span><span class="small mut">${d.count}× výběr, ${N(d.ada)} ${SY} (${esc(d.sources.join(', '))})</span><button class="btn small" data-addstake="${esc(d.stake)}">Přidat</button></div>`).join('')}</div>` : ''}</div>
+      ${evGap() ? discBox() : ''}</div>
     ` + vSharedSettings();
   }
   function vCoinSettings() {
@@ -935,6 +945,7 @@
     if (t.id === 'reportBug') return openExternal(bugReportUrl());
     if (t.id === 'updNow') { await checkUpdate(true); return render(); }
     if (t.id === 'updLater') { (state.update = state.update || {}).dismissed = state.update.latest; await save(); return showUpdate(); }
+    if (t.dataset && t.dataset.ignwallet) { const g = state.settings.ignoredWallets = state.settings.ignoredWallets || {}; g[t.dataset.ignwallet] = 1; await save(); return render(); }
     if (t.id === 'tokUnhide') { state.settings.hiddenTokens = {}; await save(); return render(); }
     if (t.id === 'tokShowAll' || t.id === 'tokShowAll2') { state.settings.showAllTokens = !state.settings.showAllTokens; await save(); return render(); }
     if (t.dataset && t.dataset.tokhide) {
