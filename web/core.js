@@ -1,7 +1,7 @@
 /* Krypto správa – jádro (čistá logika, bez UI). Běží v prohlížeči i v Node (testy). */
 (function (root) {
   'use strict';
-  const VERSION = '0.4.7';
+  const VERSION = '0.4.8';
   const SHELLEY_EPOCH = 208, SHELLEY_START = 1596059091000, EPOCH_MS = 432000000;
   const DAY = 86400000, HOUR = 3600000;
   const STABLE_USD = new Set(['USD', 'USDT', 'USDC', 'BUSD', 'FDUSD', 'DAI', 'TUSD']);
@@ -88,6 +88,7 @@
     if (has('symbol', 'datum', 'smer', 'zaplaceno', 'ziskano')) return 'coinbank';
     if (has('symbol', 'datum', 'smer', 'typ', 'mnozstvi')) return 'coinbank_orders';
     if (has('uid', 'date', 'symbol', 'action', 'quantity')) return 'whalebooks';
+    if (has('timestamp', 'transaction_type', 'asset', 'quantity_transacted')) return 'coinbase';
     if (has('operation_date', 'currency_ticker', 'operation_type')) return 'ledgerlive';
     if (has('sent_amount', 'received_amount', 'txhash')) return 'eternl';
     if (has('epoch', 'stake', 'pool', 'total_rewards')) return 'rewards_csv';
@@ -97,7 +98,7 @@
   function sourceFromName(fileName, fmt) {
     const m = /TRANSACTION-EXPORT_([^_]+)_([^_.]+)/i.exec(fileName || '');
     if (m) { let a = m[1], b = m[2]; if (/^whalebooks$/i.test(a)) a = /^any/i.test(b) ? 'Anycoin' : b; return canonSource(a); }
-    return { binance: 'Binance', coinmate: 'Coinmate', anycoin_orders: 'Anycoin', anycoin_tx: 'Anycoin', coinbank: 'CoinBank' }[fmt] || 'Jiná burza';
+    return { binance: 'Binance', coinmate: 'Coinmate', anycoin_orders: 'Anycoin', anycoin_tx: 'Anycoin', coinbank: 'CoinBank', coinbase: 'Coinbase' }[fmt] || 'Jiná burza';
   }
   function canonSource(s) {
     const k = String(s).toLowerCase();
@@ -114,6 +115,9 @@
 
   function importFile(fileName, text, coin) {
     coin = (coin || 'ADA').toUpperCase();
+    // Coinbase: před hlavičkou jsou řádky „Transactions“, „User,…“ (příp. úvodní text) – začni od hlavičky
+    const hm = /^(?:"?ID"?,)?"?Timestamp"?,"?Transaction Type"?,/m.exec(text);
+    if (hm && hm.index > 0) text = text.slice(hm.index);
     const P = parseCSV(text);
     const fmt = detectFormat(P, fileName);
     const out = { fileName, format: fmt, source: sourceFromName(fileName, fmt), events: [], skipped: 0, notes: [] };
@@ -245,6 +249,36 @@
         if (!isFinite(date)) continue;
         if (dst === COIN) out.events.push({ date, kind: 'buy', ada: got - fee, quoteCur: src, quoteAmt: paid, note: 'nákup (po poplatku)' });
         else out.events.push({ date, kind: 'sell', ada: paid, quoteCur: dst, quoteAmt: got, feeQuote: fee || undefined, note: 'prodej' });
+      }
+    },
+
+    /** Coinbase – výpis „Statements“ (CSV): Buy/Sell/Convert/Send/Receive/Rewards… v USD (EUR) */
+    coinbase(P, out, COIN) {
+      const c = { id: P.col('id'), d: P.col('timestamp'), t: P.col('transaction_type'), a: P.col('asset'), q: P.col('quantity_transacted'),
+        pc: P.col('price_currency', 'spot_price_currency'), sub: P.col('subtotal'), tot: P.col('total_inclusive_of_fees_and_or_spread'),
+        f: P.col('fees_and_or_spread'), n: P.col('notes'), snd: P.col('sender_address'), rcp: P.col('recipient_address') };
+      const money = v => { const x = String(v || '').replace(/[$€£\s"]/g, '').replace(/,/g, ''); return x === '' ? NaN : parseFloat(x); };
+      for (const r of P.rows) {
+        const g = i => P.get(r, i);
+        if (g(c.a).toUpperCase() !== COIN) continue;
+        const typ = g(c.t), T = typ.toLowerCase(), qty = money(g(c.q)), date = parseDate(g(c.d), 'utc');
+        if (!isFinite(qty) || !(Math.abs(qty) > 0) || !isFinite(date)) { out.skipped++; continue; }
+        const ada = Math.abs(qty), cur = (g(c.pc) || 'USD').toUpperCase(), sub = Math.abs(money(g(c.sub))), fee = Math.abs(money(g(c.f)));
+        const note = (g(c.n) || typ).slice(0, 120), oid = g(c.id) || undefined;
+        const trade = kind => { const e = { date, kind, ada, orderId: oid, note }; if (isFinite(sub)) { e.quoteCur = cur; e.quoteAmt = sub; if (isFinite(fee) && fee > 0) e.feeQuote = fee; } out.events.push(e); };
+        if (/^send$|withdraw/.test(T)) {
+          const to = g(c.rcp);
+          out.events.push({ date, kind: 'withdraw', ada, hash: isHash(to) ? normHash(to) : undefined, addr: /^addr1/.test(to) ? to : undefined, orderId: oid, note: 'výběr' + (to ? ' na ' + to.slice(0, 10) + '…' : '') });
+        } else if (/^receive$|^deposit$/.test(T)) {
+          const from = g(c.snd);
+          // příjem z adresy = vklad; od služby (např. „Bling Financial“) = odměna
+          if (!from || /^(addr1|bc1|[13][a-km-zA-HJ-NP-Z1-9]{25,}|0x[0-9a-f]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}$)/i.test(from)) out.events.push({ date, kind: 'deposit', ada, orderId: oid, note: 'vklad' });
+          else out.events.push({ date, kind: 'income', ada, orderId: oid, note: 'odměna od ' + from.slice(0, 40) });
+        } else if (/reward|income|earn|learning|interest|airdrop|inflation|staking/.test(T)) {
+          if (/staking|inflation/.test(T)) out.events.push({ date, kind: 'income', ada, orderId: oid, note: typ + ' (staking na Coinbase)' });
+          else out.events.push({ date, kind: 'income', ada, orderId: oid, note: typ });
+        } else if (/buy|sell|convert|trade/.test(T)) trade(qty > 0 ? 'buy' : 'sell');
+        else { out.skipped++; out.notes.push('Neznámý typ Coinbase: ' + typ); }
       }
     },
 
@@ -568,8 +602,10 @@
     const ACQK = new Set(['buy', 'reward', 'income', 'refund', 'incoming']);
     const DISK = new Set(['sell', 'fee', 'gift', 'gone']);
     const order = e => (ACQK.has(e.rk) ? 0 : 1);
+    // nabytí se řadí na poledne dne nabytí; poplatek ze stejného dne až po něm (jinak by poplatek ráno po ranním nákupu „neměl z čeho“ ubrat)
+    const key = e => ACQK.has(e.rk) ? dayToMs(e.acqDay) : (e.rk === 'fee' ? Math.max(e.date, dayToMs(e.day)) : e.date);
     const flow = evs.filter(e => ACQK.has(e.rk) || DISK.has(e.rk)).sort((a, b) => {
-      const da = ACQK.has(a.rk) ? dayToMs(a.acqDay) : a.date, db = ACQK.has(b.rk) ? dayToMs(b.acqDay) : b.date;
+      const da = key(a), db = key(b);
       return da - db || order(a) - order(b);
     });
     const lots = [], sales = [];

@@ -4,7 +4,7 @@
 
 Přehled kryptoměn, stakingu a **českých daní** na jednom místě – offline, bez registrace, data zůstávají u tebe.
 
-- **ADA, BTC, ETH, SOL** přímo z blockchainu podle tvých adres (BTC i přes xpub z Ledgeru), **XRP, BNB, DOGE, TRX, LINK, XLM, LTC** z exportů burz (Binance, Coinmate, Anycoin, CoinBank, WhaleBooks/Coinbase)
+- **ADA, BTC, ETH, SOL** přímo z blockchainu podle tvých adres (BTC i přes xpub z Ledgeru), **XRP, BNB, DOGE, TRX, LINK, XLM, LTC** z exportů burz (Binance, Coinbase, Coinmate, Anycoin, CoinBank, WhaleBooks)
 - **Staking** – každá odměna s datem a cenou v USD / Kč (ADA, SOL)
 - **České daně** – časový test 3 roky (FIFO), roční limit **100 000 Kč** od 2025 (společný pro všechna krypta), kolik ještě můžeš prodat bez daně
 - **Portfolio s grafy**, tokeny na Cardanu, přepínání Kč / USD

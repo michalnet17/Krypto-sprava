@@ -693,7 +693,7 @@
       <label class="row"><input type="checkbox" id="tokAll" ${S.showAllTokens ? 'checked' : ''}> V přehledu zobrazit i skryté tokeny (bez ceny, v hodnotě pod ${TOK_MIN_CZK} Kč, označené jako podvodné a ručně skryté)</label>
       <p class="small mut">Na ETH a SOL chodí na adresy podvodné „airdrop“ tokeny – neotvírej jejich odkazy a nic s nimi nedělej. Ručně skrytých: ${Object.keys(S.hiddenTokens || {}).length}${Object.keys(S.hiddenTokens || {}).length ? ' <button class="btn sec small" id="tokUnhide">zobrazit všechny ručně skryté</button>' : ''}</p></div>
     <div class="card"><h3>Exporty z burz</h3>
-      <div class="row2"><input type="file" id="files" multiple accept=".csv,.txt,text/csv,text/plain"> <span class="small mut">Binance (Transaction History), Coinmate, Anycoin (objednávky i transakce), CoinBank (Obchody), WhaleBooks (vč. Coinbase). Exporty jsou společné pro všechny mince – ${ALLM ? 'každá mince si z nich bere jen svoje řádky' : `tady jsou vidět jen řádky ${SYM}`}. Duplicity mezi soubory se vyřadí.</span></div>
+      <div class="row2"><input type="file" id="files" multiple accept=".csv,.txt,text/csv,text/plain"> <span class="small mut">Binance (Transaction History), Coinbase (Výpisy / Statements – CSV), Coinmate, Anycoin (objednávky i transakce), CoinBank (Obchody), WhaleBooks (vč. Coinbase). Exporty jsou společné pro všechny mince – ${ALLM ? 'každá mince si z nich bere jen svoje řádky' : `tady jsou vidět jen řádky ${SYM}`}. Duplicity mezi soubory se vyřadí.</span></div>
       <table><tr><th>Soubor</th><th>Formát</th><th>Burza</th><th class="n">${ALLM ? 'Řádky podle mincí' : SYM + ' řádků'}</th><th>Pozn.</th><th></th></tr>
       ${state.imports.map((im, i) => {
         let cnt, note;
