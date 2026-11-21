@@ -1029,6 +1029,15 @@
     try { state = Object.assign(defState(), await Platform.loadState() || {}); }
     catch (e) { $('#view').innerHTML = `<div class="warnbox">Appka neběží přes server. Na PC ji spouštěj přes <b>START-PC.bat</b>.<br>${esc(e.message)}</div>`; return; }
     state.settings = Object.assign(defState().settings, state.settings);
+    // importy nahrané verzí, která jejich formát ještě neznala (např. Coinbase) – rozpoznat znovu
+    let upg = 0;
+    for (const im of state.imports || []) {
+      if (!im.text || !(im.format === 'unknown' || im.ignored)) continue;
+      const r = C.importFile(im.fileName, im.text);
+      if (r.format === 'unknown' || r.ignored) continue;
+      Object.assign(im, { format: r.format, source: r.source, events: r.events, skipped: r.skipped, notes: r.notes, coin: r.coin }); delete im.ignored; upg++;
+    }
+    if (upg) { try { await Platform.saveState(state); } catch (e) { /* uloží se při další změně */ } }
     applyTheme();
     PR = Pair.create({ state: () => state, persist: () => Platform.saveState(state), refresh: render, status, log, isBusy: () => busy, http: Platform.http });
     render();
