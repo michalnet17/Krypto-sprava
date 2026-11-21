@@ -330,7 +330,37 @@
       save, status, saveFile: (n, m, c) => Platform.saveFile(n, m, c), printHtml: (h, t) => Platform.printHtml(h, t) };
   }
   /** grafy (koláče) – složení portfolia */
-  function chartsCard(syms) {
+  /* ---------- tokeny na sítích (ADA, ETH, SOL) pro přehled ---------- */
+  const TOK_MIN_CZK = 10;
+  function netTokens() {
+    const S = state.settings, hid = S.hiddenTokens || {}, rUsd = RATES().usd, rows = [];
+    const ch = state.chain;
+    let TL = {}; try { TL = ch ? C.tokenLots(ch, Date.now()) : {}; } catch (e) { TL = {}; }
+    for (const t of adaTokens().list) {
+      const tl = TL[t.f.key]; let old = null, young = null;
+      if (tl && tl.lots && tl.lots.length) { old = !tl.allFree ? t.amount : Math.min(t.amount, (tl.exemptQty || 0) / Math.pow(10, t.dec || 0)); young = Math.max(0, t.amount - old); }
+      rows.push({ net: 'ADA', id: 'ADA:' + t.f.key, sym: t.name, name: t.full, qty: t.amount, dp: t.dec ? 2 : 0, usd: t.p.usd != null ? t.p.usd : null, val: t.usd,
+        icon: t.p.image || (t.m.logo ? 'data:image/png;base64,' + t.m.logo : ''), scam: false, where: 'peněženka ADA', old, young });
+    }
+    for (const net of ['ETH', 'SOL']) {
+      const cd = (state.coinData || {})[net], toks = cd && cd.chain && cd.chain.tokens; if (!toks || !(cd.settings.sources || []).length) continue;
+      const agg = {};
+      for (const t of toks) {
+        const k = net + ':' + t.id, a = agg[k] = agg[k] || { net, id: k, sym: t.sym, name: t.name, qty: 0, dp: Math.min(6, t.dec || 0), usd: t.usd, icon: /^https:\/\//.test(t.icon || '') ? t.icon : '', scam: !!t.scam, at: new Set() };
+        a.qty += t.qty; a.at.add(t.at);
+      }
+      for (const a of Object.values(agg)) rows.push(Object.assign(a, { val: a.usd != null ? a.qty * a.usd : null, where: [...a.at].map(x => x.slice(0, 6) + '…' + x.slice(-4)).join(', '), old: null, young: null }));
+    }
+    for (const x of rows) {
+      const czk = x.val != null && rUsd ? x.val * rUsd : null;
+      x.manual = !!hid[x.id];
+      x.why = x.manual ? 'skryto ručně' : x.scam ? 'označen jako podvodný' : x.usd == null ? 'bez ceny' : czk != null && czk < TOK_MIN_CZK ? 'pod 10 Kč' : '';
+      x.hidden = !!x.why;
+    }
+    return rows.sort((a, b) => (b.val || 0) - (a.val || 0) || a.sym.localeCompare(b.sym));
+  }
+
+  function chartsCard(syms, toks) {
     if (!window.Report) return '';
     const usdCzk = (ALL.R.ADA || R).summary.usdCzk;
     const byCoin = [], byPlace = {}, age = { old: 0, young: 0 };
@@ -342,14 +372,20 @@
       for (const l of loc) { const k = l.kind === 'exchange' ? l.label : l.kind === 'stake' ? 'Staking' : 'Peněženky'; byPlace[k] = (byPlace[k] || 0) + l.qty * p; }
       age.old += r.summary.oldAda * p; age.young += r.summary.youngAda * p;
     }
-    if (syms.includes('ADA')) { const t = adaTokens(); if (t.tokUsd && usdCzk) { byCoin.push({ label: 'Tokeny (ADA)', value: t.tokUsd * usdCzk, key: 'TOK' }); byPlace['Peněženky'] = (byPlace['Peněženky'] || 0) + t.tokUsd * usdCzk; } }
+    if (toks) {
+      if (usdCzk) for (const net of ['ADA', 'ETH', 'SOL']) {
+        const ts = toks.filter(t => t.net === net && t.val != null), v = ts.reduce((a, t) => a + t.val, 0) * usdCzk;
+        if (v > 0.5) { byCoin.push({ label: `Tokeny (${net})`, value: v, key: 'TOK' + net }); byPlace['Peněženky'] = (byPlace['Peněženky'] || 0) + v; }
+        for (const t of ts) if (t.old != null && t.usd != null) { age.old += t.old * t.usd * usdCzk; age.young += t.young * t.usd * usdCzk; }
+      }
+    } else if (syms.includes('ADA')) { const t = adaTokens(); if (t.tokUsd && usdCzk) { byCoin.push({ label: 'Tokeny (ADA)', value: t.tokUsd * usdCzk, key: 'TOK' }); byPlace['Peněženky'] = (byPlace['Peněženky'] || 0) + t.tokUsd * usdCzk; } }
     const fmt = v => MK(v);
     const parts = [];
     if (syms.length > 1 && byCoin.length) parts.push(Report.donut(byCoin, { title: 'Podle mincí', fmt }));
     const pl = Object.entries(byPlace).filter(([, v]) => v > 0.5).map(([label, value]) => ({ label, value }));
     if (pl.length) parts.push(Report.donut(pl, { title: 'Kde to je', fmt }));
     if (age.old + age.young > 0.5) parts.push(Report.donut([{ label: 'Drženo > 3 roky', value: age.old, color: '#22c55e' }, { label: 'Drženo ≤ 3 roky', value: age.young, color: '#f59e0b' }], { title: 'Časový test', fmt }));
-    return parts.length ? `<div class="card"><h3>Grafy portfolia</h3><div class="charts">${parts.join('')}</div><div class="small mut">Hodnoty v ${CURL[CUR()]} podle aktuální ceny. Tokeny ADA jen ty, u kterých je známá cena.</div></div>` : '';
+    return parts.length ? `<div class="card"><h3>Grafy portfolia</h3><div class="charts">${parts.join('')}</div><div class="small mut">Hodnoty v ${CURL[CUR()]} podle aktuální ceny. ${toks ? 'Tokeny jen ty zobrazené v přehledu.' : 'Tokeny ADA jen ty, u kterých je známá cena.'}</div></div>` : '';
   }
 
   /* ---------- Portfolio (vždy nahoře na Přehledu) ---------- */
@@ -594,7 +630,16 @@
       const y = r.years[s.year] || {};
       return { sym, c, r, s, qty, val, g: sinceStart(sym), ownIncome: state.settings.includeExemptInLimit ? (y.income || 0) : (y.incomeNon || 0) };
     }).filter(x => x.qty > 1e-9 || x.ownIncome > 0 || x.sym === 'ADA');
-    const totUsd = rows.reduce((a, x) => a + (x.val || 0), 0);
+    const allToks = netTokens(), showAll = !!state.settings.showAllTokens;
+    const toks = allToks.filter(t => showAll || !t.hidden), nHid = allToks.filter(t => t.hidden).length;
+    const tokUsd = allToks.filter(t => !t.hidden).reduce((a, t) => a + (t.val || 0), 0);
+    const totUsd = rows.reduce((a, x) => a + (x.val || 0), 0) + tokUsd;
+    const tokLogo = t => t.icon ? `<img class="tlogo" src="${esc(t.icon)}" data-txt="${esc(t.sym.slice(0, 2))}" alt="" loading="lazy" onerror="logoFail(this)">` : `<span class="tlogo">${esc(t.sym.slice(0, 2))}</span>`;
+    const tokRows = !allToks.length ? '' : `<tr class="tsep"><td colspan="8"><b>Tokeny na sítích</b> <span class="small mut">${toks.length} zobrazeno${nHid ? ` · ${nHid} skryto (bez ceny, pod ${TOK_MIN_CZK} Kč, podvodné nebo ručně)` : ''}</span>${nHid ? ` <button class="btn sec small" id="tokShowAll">${showAll ? 'schovat skryté' : 'zobrazit skryté'}</button>` : ''}</td></tr>
+      ${toks.map(t => `<tr class="${t.hidden ? 'tokhid' : ''}"><td>${tokLogo(t)}<b>${esc(t.sym)}</b> <span class="pill">${t.net}</span>${t.name && t.name !== t.sym ? ` <span class="small mut">${esc(t.name)}</span>` : ''}<div class="small mut">${esc(t.where)}${t.hidden ? ` · <span class="warn">${t.why}</span>` : ''}</div></td>
+        <td class="n">${C.fmtN(t.qty, t.dp)}</td><td class="n">${t.usd != null ? PU(t.usd) : '<span class="mut">–</span>'}</td><td class="n">${t.val != null ? `<b>${MU(t.val)}</b>` : '<span class="mut">–</span>'}</td><td class="n"><span class="mut">–</span></td>
+        <td class="n ok">${t.old != null ? C.fmtN(t.old, t.dp) : '<span class="mut">–</span>'}</td><td class="n warn">${t.young != null ? C.fmtN(t.young, t.dp) : '<span class="mut">–</span>'}</td>
+        <td><button class="btn sec small" data-tokhide="${esc(t.id)}">${t.manual ? 'zobrazit' : 'skrýt'}</button></td></tr>`).join('')}`;
     const tg = rows.reduce((a, x) => { const g = x.g; if (g && g.gain != null) { a.gain += g.gain; a.inv += g.invFiat; a.n++; } return a; }, { gain: 0, inv: 0, n: 0 });
     const tgPct = tg.inv > 0.5 ? tg.gain / tg.inv * 100 : null;
     const cy = new Date().getFullYear();
@@ -608,10 +653,12 @@
     return `<div class="card"><h3>Všechny mince – portfolio</h3><div class="tw"><table><tr><th>Mince</th><th class="n">Množství</th><th class="n">Cena</th><th class="n">Hodnota</th><th class="n">Od začátku</th><th class="n">> 3 roky</th><th class="n">≤ 3 roky</th><th></th></tr>
       ${rows.map(x => `<tr><td><b>${esc(x.sym)}</b> <span class="small mut">${esc(x.c.name || '')}</span></td><td class="n">${C.fmtN(x.qty, x.c.dp || 4)}</td><td class="n">${PU(x.s.priceUsd)}</td><td class="n"><b>${MU(x.val)}</b></td><td class="n">${sinceCell(x.g)}</td>
         <td class="n ok">${C.fmtN(x.s.oldAda, x.c.dp || 4)}</td><td class="n warn">${C.fmtN(x.s.youngAda, x.c.dp || 4)}</td><td><button class="btn sec small" data-coin="${esc(x.sym)}">otevřít</button></td></tr>`).join('')}
-      <tr><td><b>Celkem</b></td><td></td><td></td><td class="n"><b>${MU(totUsd)}</b></td><td class="n">${tg.n ? `<b class="${CLS(tg.gain)}">${tgPct != null ? PCT(tgPct) : ''}</b><br><span class="small ${CLS(tg.gain)}">${SG(tg.gain, MK)}</span>` : ''}</td><td></td><td></td><td></td></tr></table></div>
+      ${tokRows}
+      <tr><td><b>Celkem</b>${tokUsd ? ` <span class="small mut">vč. tokenů ${MU(tokUsd)}</span>` : ''}</td><td></td><td></td><td class="n"><b>${MU(totUsd)}</b></td><td class="n">${tg.n ? `<b class="${CLS(tg.gain)}">${tgPct != null ? PCT(tgPct) : ''}</b><br><span class="small ${CLS(tg.gain)}">${SG(tg.gain, MK)}</span>` : ''}</td><td></td><td></td><td></td></tr></table></div>
       <p class="small mut">Od začátku = dnešní hodnota + peníze z prodejů − vše, co jsi do mince vložil (nákupy vč. poplatků). Odměny ze stakingu jsou čistý zisk. Příchozí bez doloženého nákupu se počítají v ceně v den příchodu. Podrobnosti po najetí myší.</p>
-      <p class="small mut">Množství = blockchain + zůstatky na burzách. Sloupce 3 roky jsou z evidence (loty) – pokud se liší od množství, otevři minci a dořeš upozornění. ADA bez tokenů (tokeny viz Portfolio u ADA). Mince bez dat se nezobrazují.</p></div>
-      ${chartsCard(rows.map(x => x.sym))}
+      <p class="small mut">Množství = blockchain + zůstatky na burzách. Sloupce 3 roky jsou z evidence (loty) – pokud se liší od množství, otevři minci a dořeš upozornění. Mince bez dat se nezobrazují.</p>
+      ${allToks.length ? `<p class="small mut">Tokeny: ADA z peněženky (časový test podle data nabytí), ETH (ERC-20) a SOL (SPL) zatím jen zůstatek a cena – daně u nich zatím appka nepočítá. Skryté tokeny se nezapočítávají do celkové hodnoty. Ceny: CoinGecko, Blockscout, Jupiter.</p>` : ''}</div>
+      ${chartsCard(rows.map(x => x.sym), allToks.filter(t => !t.hidden))}
       <div class="card"><h3>Rok ${cy}: společný limit 100 000 Kč (všechny kryptoměny)</h3>
         <div class="row2">Příjmy z prodejů/směn letos: <b>${K(used)}</b> z ${K(lim)}${manual ? ` <span class="small mut">(vč. ${K(manual)} mimo appku)</span>` : ''}</div>
         <div class="bar"><div style="width:${pct}%;background:${pct >= 100 ? 'var(--bad)' : 'var(--acc)'}"></div></div>
@@ -628,6 +675,9 @@
       <label class="row"><input type="checkbox" id="stTax" ${S.stakingTaxedOnReceipt ? 'checked' : ''}> Staking odměny = příjem v den připsání (jejich hodnota je pořizovací cena)</label>
       <label class="row"><input type="checkbox" id="inclEx" ${S.includeExemptInLimit ? 'checked' : ''}> Do limitu 100 000 Kč započítávat i prodeje mincí starších 3 let (opatrnější)</label>
       <div class="row2">Roční limit: <input type="number" id="limit" value="${S.limitCzk}" style="width:120px"> Kč</div></div>
+    <div class="card"><h3>Tokeny</h3>
+      <label class="row"><input type="checkbox" id="tokAll" ${S.showAllTokens ? 'checked' : ''}> V přehledu zobrazit i skryté tokeny (bez ceny, v hodnotě pod ${TOK_MIN_CZK} Kč, označené jako podvodné a ručně skryté)</label>
+      <p class="small mut">Na ETH a SOL chodí na adresy podvodné „airdrop“ tokeny – neotvírej jejich odkazy a nic s nimi nedělej. Ručně skrytých: ${Object.keys(S.hiddenTokens || {}).length}${Object.keys(S.hiddenTokens || {}).length ? ' <button class="btn sec small" id="tokUnhide">zobrazit všechny ručně skryté</button>' : ''}</p></div>
     <div class="card"><h3>Exporty z burz</h3>
       <div class="row2"><input type="file" id="files" multiple accept=".csv,.txt,text/csv,text/plain"> <span class="small mut">Binance (Transaction History), Coinmate, Anycoin (objednávky i transakce), CoinBank (Obchody), WhaleBooks (vč. Coinbase). Exporty jsou společné pro všechny mince – ${ALLM ? 'každá mince si z nich bere jen svoje řádky' : `tady jsou vidět jen řádky ${SYM}`}. Duplicity mezi soubory se vyřadí.</span></div>
       <table><tr><th>Soubor</th><th>Formát</th><th>Burza</th><th class="n">${ALLM ? 'Řádky podle mincí' : SYM + ' řádků'}</th><th>Pozn.</th><th></th></tr>
@@ -803,7 +853,7 @@
     const c = COINS[sym] || {}, cd = CD(sym);
     log(`${sym}: aktualizuji…`);
     let chainErr = null;
-    if (Chains.SYNC[sym] && (cd.settings.sources || []).length) { try { await Chains.SYNC[sym](cd, log, { save }); cd.lastSync = Date.now(); } catch (e) { chainErr = e; } await save(); }
+    if (Chains.SYNC[sym] && (cd.settings.sources || []).length) { try { await Chains.SYNC[sym](cd, log, { save, cgKey: state.settings.cgKey }); cd.lastSync = Date.now(); } catch (e) { chainErr = e; } await save(); }
     if (!chainErr && sym === 'BTC' && cd.chain) { // kam šly nespárované výběry z burz
       try {
         const r = computeCoin(sym, 0);
@@ -871,6 +921,13 @@
     if (t.id === 'reportBug') return openExternal(bugReportUrl());
     if (t.id === 'updNow') { await checkUpdate(true); return render(); }
     if (t.id === 'updLater') { (state.update = state.update || {}).dismissed = state.update.latest; await save(); return showUpdate(); }
+    if (t.id === 'tokUnhide') { state.settings.hiddenTokens = {}; await save(); return render(); }
+    if (t.id === 'tokShowAll' || t.id === 'tokShowAll2') { state.settings.showAllTokens = !state.settings.showAllTokens; await save(); return render(); }
+    if (t.dataset && t.dataset.tokhide) {
+      const h = state.settings.hiddenTokens = state.settings.hiddenTokens || {}, k = t.dataset.tokhide;
+      if (h[k]) delete h[k]; else h[k] = 1;
+      await save(); return render();
+    }
     if (t.id === 'copyDonate' || t.id === 'copyDonateBtc') {
       const addr = t.id === 'copyDonateBtc' ? donateBtc() : donateAddr();
       let ok = false;
@@ -931,6 +988,7 @@
     if (t.id === 'onlyTodo') { ui.onlyTodo = t.checked; return render(); }
     // pole adres: jen uložit, NEpřekreslovat (jinak by zmizelo tlačítko, na které se právě kliká)
     if (t.id === 'stakes' || t.id === 'token' || t.id === 'cgKey') { readStakeInputs(); await save(); return; }
+    if (t.id === 'tokAll') { state.settings.showAllTokens = t.checked; await save(); return; }
     if (t.id === 'updChk') { state.settings.updateCheck = t.checked; await save(); showUpdate(); if (t.checked) checkUpdate(true); return; }
     const handled = ['stTax', 'inclEx', 'limit'].includes(t.id) || t.dataset.other != null || t.dataset.ov != null || t.dataset.acq != null || t.dataset.czk != null;
     if (!handled) return;
@@ -962,7 +1020,7 @@
     render();
     const pg = await Platform.ping();
     // server se mění jen občas – varovat, jen když je starší než potřebná verze
-    const SERVER_MIN = '0.4.0';
+    const SERVER_MIN = '0.4.6';
     if (pg && pg.version !== null && vnum(pg.version) < vnum(SERVER_MIN)) status(`Běží stará verze serveru (${pg.version || 'starší'}), potřeba je ${SERVER_MIN}+. Zavři všechna okna konzole Krypto správa a spusť START-PC.bat znovu.`, true);
     checkUpdate(false);
     if (state.pair && state.pair.role === 'pc') { PR.pcPoll(true); PR.publish(true); PR.pcCheckInbox(); }

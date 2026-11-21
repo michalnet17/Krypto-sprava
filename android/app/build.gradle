@@ -10,8 +10,8 @@ android {
         applicationId 'cz.adadane.app'
         minSdk 26
         targetSdk 35
-        versionCode 45
-        versionName '0.4.5'
+        versionCode 46
+        versionName '0.4.6'
     }
 
     // podpis release APK: klíč z proměnných prostředí (GitHub Actions secrets); bez nich se podepíše debug klíčem

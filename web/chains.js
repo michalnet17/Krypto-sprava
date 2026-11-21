@@ -200,6 +200,7 @@ const Chains = (() => {
     }
     ch.addrs = addrs; ch.balance = bal; ch.at = Date.now();
     log(`ETH: zůstatek ${AdaCore.fmtN(bal, 6)} ETH`);
+    await syncTokens(ch, () => ethTokens(addrs, log), log);
   }
   function reduceETH(ch) {
     const own = new Set(ch.addrs || []), txs = {}, dest = {};
@@ -223,6 +224,73 @@ const Chains = (() => {
   }
 
   /* ---------------- SOL (veřejné RPC) ---------------- */
+  /* ---------------- tokeny na sítích (ERC-20, SPL) – jen aktuální zůstatek a cena ---------------- */
+  /** celé číslo v nejmenších jednotkách (text) → číslo s desetinami */
+  function units(v, dec) {
+    const t = String(v == null ? '0' : v).replace(/^0+(?=\d)/, ''); if (!/^\d+$/.test(t)) return 0;
+    if (!dec) return Number(t);
+    const p = t.padStart(dec + 1, '0');
+    return Number(p.slice(0, p.length - dec) + '.' + p.slice(p.length - dec));
+  }
+  async function ethTokens(addrs, log) {
+    const out = [];
+    for (const a of addrs) {
+      const list = await getJSON(`https://eth.blockscout.com/api/v2/addresses/${a}/token-balances`, { tries: 3 }); await sleep(250);
+      for (const b of Array.isArray(list) ? list : []) {
+        const t = b.token || {}; if (t.type !== 'ERC-20') continue;
+        const dec = +t.decimals || 0, qty = units(b.value, dec); if (!(qty > 0)) continue;
+        const rate = t.exchange_rate != null && t.exchange_rate !== '' ? +t.exchange_rate : null;
+        out.push({ id: String(t.address_hash || t.address || '').toLowerCase(), sym: String(t.symbol || '?').slice(0, 20), name: String(t.name || '').slice(0, 60), qty, dec,
+          usd: rate != null && isFinite(rate) ? rate : null, icon: t.icon_url || '', scam: t.reputation === 'scam' || t.is_scam === true, at: a });
+      }
+    }
+    log(`ETH tokeny: ${out.length}`);
+    return out;
+  }
+  const SPL = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
+  async function solTokens(addrs, log, opt) {
+    const out = [];
+    let nft = 0;
+    for (const a of addrs) for (const prog of SPL) {
+      const res = await rpc('getTokenAccountsByOwner', [a, { programId: prog }, { encoding: 'jsonParsed' }]); await sleep(300);
+      for (const v of (res && res.value) || []) {
+        const i = (((v.account || {}).data || {}).parsed || {}).info || {}, ta = i.tokenAmount || {};
+        const qty = parseFloat(ta.uiAmountString != null ? ta.uiAmountString : ta.uiAmount); if (!(qty > 0)) continue;
+        if (!ta.decimals && ta.amount === '1') { nft++; continue; } // NFT
+        out.push({ id: i.mint, sym: '', name: '', qty, dec: ta.decimals || 0, usd: null, icon: '', scam: false, at: a });
+      }
+    }
+    // ceny a názvy: Jupiter (tokeny Solany), zbytek CoinGecko
+    const mints = [...new Set(out.map(t => t.id))], info = {};
+    for (let k = 0; k < mints.length; k += 100) {
+      try {
+        const j = await getJSON('https://lite-api.jup.ag/tokens/v2/search?query=' + mints.slice(k, k + 100).join(','), { tries: 2 }); await sleep(300);
+        for (const x of Array.isArray(j) ? j : []) if (x && x.id) info[x.id] = { sym: x.symbol, name: x.name, icon: x.icon, usd: x.usdPrice != null ? +x.usdPrice : null, scam: !!(x.audit && x.audit.isSus) };
+      } catch (e) { log('SOL tokeny – Jupiter: ' + e.message.slice(0, 80)); break; }
+    }
+    const miss = mints.filter(m => !info[m] || info[m].usd == null);
+    if (miss.length) {
+      const H = opt && opt.cgKey ? { 'x-cg-demo-api-key': opt.cgKey } : {};
+      for (let k = 0; k < miss.length; k += 30) {
+        try {
+          const j = await getJSON(`https://api.coingecko.com/api/v3/simple/token_price/solana?vs_currencies=usd&contract_addresses=${miss.slice(k, k + 30).join(',')}`, { tries: 2, headers: H }); await sleep(1500);
+          for (const [m, v] of Object.entries(j || {})) if (v && v.usd != null) { const key = miss.find(x => x.toLowerCase() === m.toLowerCase()) || m; info[key] = Object.assign(info[key] || {}, { usd: +v.usd }); }
+        } catch (e) { log('SOL tokeny – CoinGecko: ' + e.message.slice(0, 80)); break; }
+      }
+    }
+    for (const t of out) {
+      const x = info[t.id] || {};
+      t.sym = String(x.sym || t.id.slice(0, 4) + '…' + t.id.slice(-3)).slice(0, 20); t.name = String(x.name || '').slice(0, 60); t.icon = x.icon || ''; t.usd = x.usd != null && isFinite(x.usd) ? x.usd : null; t.scam = !!x.scam;
+    }
+    log(`SOL tokeny: ${out.length}${nft ? `, NFT ${nft} (nezobrazují se)` : ''}, s cenou ${out.filter(t => t.usd != null).length}`);
+    return out;
+  }
+  /** tokeny se načítají až po hlavní minci; chyba tokenů nezastaví aktualizaci (zůstanou poslední známé) */
+  async function syncTokens(ch, fn, log) {
+    try { ch.tokens = await fn(); ch.tokAt = Date.now(); }
+    catch (e) { log('Tokeny: ' + e.message.slice(0, 120) + (ch.tokens ? ' – ponechávám poslední známé' : '')); }
+  }
+
   const RPC = 'https://api.mainnet-beta.solana.com', STAKE_PROG = 'Stake11111111111111111111111111111111111111';
   let rpcId = 1;
   const rpc = (method, params) => getJSON(RPC, { body: { jsonrpc: '2.0', id: rpcId++, method, params } }).then(j => { if (j && j.error) throw new Error('Solana RPC: ' + (j.error.message || JSON.stringify(j.error))); return j.result; });
@@ -303,6 +371,7 @@ const Chains = (() => {
     }
     ch.walletBal = bal; ch.balance = bal + sbal; ch.at = Date.now();
     log(`SOL: zůstatek ${AdaCore.fmtN(bal + sbal, 6)} SOL`);
+    await syncTokens(ch, () => solTokens(addrs, log, opt0), log);
   }
   function reduceSOL(ch) {
     const own = new Set([...(ch.addrs || []), ...(ch.stakeAccts || [])]), txs = {}, dest = {};
@@ -342,6 +411,6 @@ const Chains = (() => {
 
   const SYNC = { BTC: syncBTC, ETH: syncETH, SOL: syncSOL };
   const REDUCE = { BTC: reduceBTC, ETH: reduceETH, SOL: reduceSOL };
-  return { SYNC, REDUCE, syncPrice, reduceBTC, reduceETH, reduceSOL, btcWithdrawDest };
+  return { SYNC, REDUCE, units, syncPrice, reduceBTC, reduceETH, reduceSOL, btcWithdrawDest };
 })();
 if (typeof module !== 'undefined' && module.exports) module.exports = Chains;

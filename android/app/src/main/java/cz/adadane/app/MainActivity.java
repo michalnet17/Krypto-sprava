@@ -51,7 +51,7 @@ public class MainActivity extends Activity {
     private static final int REQ_CAM = 12;
     private PermissionRequest camReq; // čeká na povolení kamery (skenování QR z PC)
     private static final Set<String> ALLOWED = new HashSet<>(Arrays.asList(
-            "api.koios.rest", "data-api.binance.vision", "api.binance.com", "www.cnb.cz", "api.coingecko.com", "mempool.space", "eth.blockscout.com", "api.mainnet-beta.solana.com", "blockstream.info", "api.github.com", "raw.githubusercontent.com"));
+            "api.koios.rest", "data-api.binance.vision", "api.binance.com", "www.cnb.cz", "api.coingecko.com", "mempool.space", "eth.blockscout.com", "api.mainnet-beta.solana.com", "blockstream.info", "api.github.com", "raw.githubusercontent.com", "lite-api.jup.ag"));
 
     private WebView web;
     private FrameLayout root;

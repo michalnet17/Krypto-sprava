@@ -6,7 +6,7 @@ import json, os, sys, shutil, subprocess, tempfile, threading, time, webbrowser,
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from urllib.parse import urlparse
 
-VERSION = '0.4.0'
+VERSION = '0.4.6'
 PORT = int(os.environ.get('ADA_DANE_PORT', '8765'))
 BASE = os.path.dirname(os.path.abspath(__file__))
 WEB = os.path.join(BASE, 'web')
@@ -17,7 +17,7 @@ SYNC_OUT = os.path.join(DATA, 'sync_outbox.json')  # sifrovane nastaveni z PC pr
 SYNC_IN = os.path.join(DATA, 'sync_inbox.json')    # sifrovane nastaveni z mobilu pro PC
 SYNC_PORT = int(os.environ.get('ADA_DANE_SYNC_PORT', str(PORT + 1)))
 SYNC_MAX = 50 * 1024 * 1024
-ALLOWED = {'api.koios.rest', 'data-api.binance.vision', 'api.binance.com', 'www.cnb.cz', 'api.coingecko.com', 'mempool.space', 'eth.blockscout.com', 'api.mainnet-beta.solana.com', 'blockstream.info', 'api.github.com', 'raw.githubusercontent.com'}
+ALLOWED = {'api.koios.rest', 'data-api.binance.vision', 'api.binance.com', 'www.cnb.cz', 'api.coingecko.com', 'mempool.space', 'eth.blockscout.com', 'api.mainnet-beta.solana.com', 'blockstream.info', 'api.github.com', 'raw.githubusercontent.com', 'lite-api.jup.ag'}
 os.makedirs(DATA, exist_ok=True)
 
 

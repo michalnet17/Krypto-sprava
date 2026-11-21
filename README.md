@@ -10,6 +10,7 @@ Přehled kryptoměn, stakingu a **českých daní** na jednom místě – offlin
 - **Portfolio s grafy**, tokeny na Cardanu, přepínání Kč / USD
 - **Export** do CSV a přehledné **PDF zprávy** (celé období / rok / vybrané roky, volitelné části, adresy celé / zkrácené / skryté)
 - Windows, Linux, macOS a Android
+- **tokeny na sítích** v přehledu: ADA tokeny (vč. časového testu), ETH (ERC-20) a SOL (SPL) se zůstatkem a cenou, filtr podvodných airdropů
 - **synchronizace PC ↔ mobil** přes domácí Wi-Fi (spárování QR kódem, šifrovaně, bez cloudu)
 
 ## Stažení
