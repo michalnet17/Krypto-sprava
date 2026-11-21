@@ -180,9 +180,10 @@
     if (isADA() && !state.settings.stakeAddresses.length && !state.imports.length) h += `<div class="warnbox">Začni v <b>Nastavení</b>: zadej stake adresu (stake1…) a nahraj exporty z burz. Pak klikni <b>Aktualizovat</b>.</div>`;
     h += vPortfolio(s);
     h += chartsCard([SYM]);
-    h += R.warnings.filter(w => w.type !== 'wallet').map(w => `<div class="warnbox">⚠ ${esc(w.text)}</div>`).join('');
+    // informativní upozornění k pohybům patří do záložky Pohyby; na Přehledu jen když evidence nesedí
+    h += R.warnings.filter(w => w.type !== 'wallet' && (!INFO_W.has(w.type) || !evOk())).map(w => `<div class="warnbox">⚠ ${esc(w.text)}</div>`).join('');
     // nalezené peněženky: na Přehledu jen když evidence nesedí (jinak jen v Pohybech)
-    if (evGap() && discList().length) h += `<div class="warnbox">⚠ Nalezeno ${discList().length} dalších peněženek, kam šly výběry z burz – může to vysvětlovat rozdíl. Podrobnosti v záložce <b>Pohyby</b>.</div>`;
+    if (!evOk() && discList().length) h += `<div class="warnbox">⚠ Nalezeno ${discList().length} dalších peněženek, kam šly výběry z burz – může to vysvětlovat rozdíl. Podrobnosti v záložce <b>Pohyby</b>.</div>`;
     h += `<div class="grid">
       <div class="card kpi"><h3>Celkem ${SYM}</h3><div class="v">${N(s.total)} ${SY}</div><div class="s">${MA(s.total)}</div><div class="s">cena ${U(s.priceUsd)} / ${s.priceCzk != null ? N(s.priceCzk, 2) + ' Kč' : '–'} (${DK(s.lastPriceDay)})</div></div>
       <div class="card kpi"><h3>Drženo déle než 3 roky</h3><div class="v ok">${N(s.oldAda)} ${SY}</div><div class="s">osvobozeno časovým testem · ${MA(s.oldAda)}</div></div>
@@ -493,6 +494,10 @@
   /* ---------- Pohyby ---------- */
   /* ---------- nalezené další peněženky (kam šly výběry z burz) ---------- */
   const evGap = () => (R.warnings || []).some(w => w.type === 'gap');
+  const INFO_W = new Set(['incoming', 'gone', 'custodial']);
+  /** evidence sedí se skutečností (žádný rozdíl ani chybějící nákup) */
+  const evOk = () => !(R.warnings || []).some(w => w.type === 'gap' || w.type === 'shortfall');
+  const infoBox = () => (R.warnings || []).filter(w => INFO_W.has(w.type)).map(w => `<div class="warnbox">ℹ ${esc(w.text)}</div>`).join('');
   const discList = () => { const ign = state.settings.ignoredWallets || {}; return (R.discovered || []).filter(d => !ign[d.stake]); };
   function discBox() {
     const L = discList(); if (!L.length) return '';
@@ -513,7 +518,7 @@
       const cur = (OVR()[e.id] || {}).kind || '';
       return `<select data-ov="${esc(e.id)}">${base.map(([v, t]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${t}</option>`).join('')}</select>`;
     };
-    return `${discBox()}<div class="card"><div class="filters">
+    return `${evOk() ? infoBox() : ''}${discBox()}<div class="card"><div class="filters">
       <label><input type="checkbox" id="onlyTodo" ${ui.onlyTodo ? 'checked' : ''}> jen k vyřešení (${todo}: příchozí bez dokladu, nespárované výběry/vklady burz)</label>
       <input type="text" id="q" placeholder="hledat (burza, hash…)" value="${esc(ui.q)}">
       <button class="btn sec small" data-exp="events">Export CSV</button></div>
@@ -572,7 +577,7 @@
       <div class="row2">CoinGecko demo API klíč (nepovinné, pro ceny tokenů – zdarma na coingecko.com): <input type="text" id="cgKey" value="${esc(S.cgKey || '')}" style="flex:1;min-width:160px"></div>
       <button class="btn" id="saveStakes">Uložit a načíst</button>
       ${stakeList}
-      ${evGap() ? discBox() : ''}</div>
+      ${!evOk() ? discBox() : ''}</div>
     ` + vSharedSettings();
   }
   function vCoinSettings() {
