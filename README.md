@@ -44,19 +44,22 @@ Pomůcka pro přehled a výpočet podle pravidel platných v ČR. **Nenahrazuje 
 
 ## Podpořit vývoj
 
-Appka je zdarma. Pokud ti pomáhá, můžeš poslat libovolnou částku **ADA**:
+Appka je zdarma. Pokud ti pomáhá, můžeš poslat libovolnou částku **ADA** nebo **BTC**:
+
+| ADA (Cardano) | BTC (Bitcoin) |
+|---|---|
+| <img src="web/donate.svg" alt="QR kód ADA adresy" width="160"> | <img src="web/donate-btc.svg" alt="QR kód BTC adresy" width="160"> |
 
 ```
-addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2svjfeen36xjkxhgjqp6nlxa
+ADA: addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2svjfeen36xjkxhgjqp6nlxa
+BTC: bc1qhxh9aucufsmh9f7qjwhvrkl9jn3umgzsw7dnwn
 ```
-
-<img src="web/donate.svg" alt="QR kód ADA adresy" width="160">
 
 ## Pro vývojáře
 
 - `web/` – celá appka (HTML/JS), stejná pro PC i Android · `server.py` – lokální server (Python stdlib)
 - `android/` – WebView obal · sestavení: GitHub Actions (`.github/workflows/release.yml`) nebo `BUILD-APK.bat`
 - Nová verze: zvyš `VERSION` ve `web/core.js` (a `versionCode`/`versionName` v `android/app/build.gradle`), nahraj do `main` – zipy i APK se sestaví a vydají samy jako Release `vX.Y.Z`.
-- `donate.json` – aktuální donate adresa, appka si ji načítá (změna se projeví i ve starších verzích).
+- `donate.json` – aktuální donate adresy (ADA, BTC), appka si ji načítá (změna se projeví i ve starších verzích).
 
 Licence: [MIT](LICENSE) · přibalené knihovny: [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator) (MIT), [jsQR](https://github.com/cozmo/jsQR) (Apache 2.0, `web/vendor/LICENSE-jsQR.txt`)

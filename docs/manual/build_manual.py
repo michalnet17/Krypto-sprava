@@ -7,6 +7,8 @@ OUT = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else '/tmp/manual')
 OUT.mkdir(parents=True, exist_ok=True)
 DONATE = 'addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2svjfeen36xjkxhgjqp6nlxa'
 QR = (pathlib.Path(__file__).resolve().parents[2] / 'web' / 'donate.svg').read_text()
+DONATE_BTC = 'bc1qhxh9aucufsmh9f7qjwhvrkl9jn3umgzsw7dnwn'
+QR_BTC = (pathlib.Path(__file__).resolve().parents[2] / 'web' / 'donate-btc.svg').read_text()
 QR = QR[QR.index('<svg'):]
 
 INSTALL = {
@@ -173,10 +175,14 @@ COMMON = '''
 DON = '''
 <h2>Podpořit vývoj</h2>
 <div class="don"><div class="qr">%s</div><div>
-<p>Krypto správa je zdarma. Pokud ti ušetřila čas nebo starosti s daněmi, můžeš autorovi poslat libovolnou částku <b>ADA</b> (Cardano) na adresu:</p>
+<p>Krypto správa je zdarma. Pokud ti ušetřila čas nebo starosti s daněmi, můžeš autorovi poslat libovolnou částku <b>ADA</b> nebo <b>BTC</b>.</p>
+<p><b>ADA</b> (Cardano):</p>
+<p class="addr">%s</p></div></div>
+<div class="don"><div class="qr">%s</div><div>
+<p><b>BTC</b> (Bitcoin):</p>
 <p class="addr">%s</p>
-<p class="mut">Adresa je i v appce: Nastavení → Podpořit vývoj (tlačítko Kopírovat). Děkuji!</p></div></div>
-''' % (QR, DONATE)
+<p class="mut">Adresy jsou i v appce: Nastavení → Podpořit vývoj (tlačítka Kopírovat). Děkuji!</p></div></div>
+''' % (QR, DONATE, QR_BTC, DONATE_BTC)
 
 CSS = '''
 @page { size: A4; margin: 16mm 15mm; }
@@ -194,6 +200,7 @@ tr { break-inside: avoid; }
 .don { display: flex; gap: 16px; align-items: center; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; break-inside: avoid; }
 .qr svg { width: 150px; height: 150px; } .addr { font-family: Consolas, monospace; font-size: 10.5px; word-break: break-all; background: #f3f4f6; padding: 6px 8px; border-radius: 6px; }
 .toc { columns: 2; font-size: 11px; }
+.don + .don { margin-top: 10px; }
 '''
 
 TOC = ['Co appka umí', 'Instalace a spuštění', 'První nastavení', 'Aktualizace', 'Jak číst přehled', 'Všechny mince', 'Export (CSV / PDF)', 'Data, záloha a soukromí', 'Řešení problémů', 'Upozornění', 'Podpořit vývoj']

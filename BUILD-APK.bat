@@ -2,7 +2,7 @@
 setlocal EnableExtensions
 cd /d "%~dp0"
 
-set "VER=0.4.4"
+set "VER=0.4.5"
 echo ==================================================
 echo Krypto sprava - build Android APK
 echo Verze: %VER%

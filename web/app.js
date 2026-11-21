@@ -240,6 +240,9 @@
   const vnum = v => String(v || '0').replace(/^v/i, '').split('.').slice(0, 3).map(x => parseInt(x, 10) || 0).reduce((a, x) => a * 1000 + x, 0);
   /** donate adresa: z GitHubu (jen platná ADA adresa), jinak zabudovaná */
   const donateAddr = () => { const d = state.update && state.update.donate; return d && C.bech32Valid(d, 'addr') ? d : DONATE_BUILTIN; };
+  const DONATE_BTC_BUILTIN = 'bc1qhxh9aucufsmh9f7qjwhvrkl9jn3umgzsw7dnwn';
+  const donateBtc = () => { const d = state.update && state.update.donateBtc; return d && /^bc1q/.test(d) && C.bech32Valid(d, 'bc') ? d : DONATE_BTC_BUILTIN; };
+  const qrImg = (txt, alt) => { try { const q = qrcode(0, 'M'); q.addData(txt); q.make(); return `<div class="donateqr" role="img" aria-label="${esc(alt)}">${q.createSvgTag({ cellSize: 4, margin: 2, scalable: true })}</div>`; } catch (e) { return ''; } };
   async function checkUpdate(force) {
     if (!REPO || state.settings.updateCheck === false) return;
     const u = state.update = state.update || {};
@@ -251,7 +254,7 @@
         if (j.tag_name && !j.draft && !j.prerelease) Object.assign(u, { latest: String(j.tag_name).replace(/^v/i, ''), url: /^https:\/\/github\.com\//.test(j.html_url || '') ? j.html_url : `https://github.com/${REPO}/releases/latest`, notes: String(j.body || '').slice(0, 600), name: String(j.name || '') });
       }
       const d = await Platform.http('GET', `https://raw.githubusercontent.com/${REPO}/main/donate.json`, null, {});
-      if (d.ok && d.status === 200) { try { const a = String((JSON.parse(d.body || '{}').ada) || '').trim(); u.donate = C.bech32Valid(a, 'addr') ? a : null; } catch (e) { /* ponech poslední */ } }
+      if (d.ok && d.status === 200) { try { const j = JSON.parse(d.body || '{}'); const a = String(j.ada || '').trim(), b = String(j.btc || '').trim(); u.donate = C.bech32Valid(a, 'addr') ? a : null; u.donateBtc = /^bc1q/.test(b) && C.bech32Valid(b, 'bc') ? b : null; } catch (e) { /* ponech poslední */ } }
       u.at = Date.now(); await save();
       if (force) status(u.latest && vnum(u.latest) > vnum(C.VERSION) ? `Je dostupná nová verze ${u.latest}.` : `Máš aktuální verzi (${C.VERSION}).`);
     } catch (e) { if (force) status('Kontrola verze selhala: ' + e.message, true); }
@@ -649,10 +652,15 @@
       <div class="row2"><button class="btn sec small" id="reportBug">Nahlásit chybu / nápad</button> <span class="small mut">otevře hlášení na GitHubu s verzí a logem – adresy se automaticky zamaskují</span></div>
       <div class="row2"><button class="btn sec small" id="updNow">Zkontrolovat teď</button> <span class="small mut">${state.update && state.update.at ? 'naposledy ' + new Date(state.update.at).toLocaleString('cs-CZ') + (state.update.latest ? ' · poslední verze ' + esc(state.update.latest) : '') : ''}</span></div>` : '<p class="small mut">Kontrola nových verzí není v této kopii nastavená.</p>'}</div>
     <div class="card" id="donateCard"><h3>Podpořit vývoj</h3>
-      <div class="donate">${donateAddr() === DONATE_BUILTIN ? '<img src="donate.svg" alt="QR kód adresy pro dar" width="132" height="132">' : ''}
-      <div><p class="small">Appka je zdarma. Pokud ti pomáhá, můžeš autorovi poslat libovolnou částku <b>ADA</b> (Cardano) na adresu:</p>
+      <p class="small">Appka je zdarma. Pokud ti pomáhá, můžeš autorovi poslat libovolnou částku <b>ADA</b> nebo <b>BTC</b>:</p>
+      <div class="donate">${qrImg(donateAddr(), 'QR kód ADA adresy pro dar')}
+      <div><p class="small"><b>ADA</b> (Cardano)</p>
       <div class="mono small" style="word-break:break-all">${donateAddr()}</div>
-      <div class="row2"><button class="btn sec small" id="copyDonate">Kopírovat adresu</button></div></div></div></div>`;
+      <div class="row2"><button class="btn sec small" id="copyDonate">Kopírovat ADA adresu</button></div></div></div>
+      <div class="donate" style="margin-top:14px">${qrImg(donateBtc(), 'QR kód BTC adresy pro dar')}
+      <div><p class="small"><b>BTC</b> (Bitcoin)</p>
+      <div class="mono small" style="word-break:break-all">${donateBtc()}</div>
+      <div class="row2"><button class="btn sec small" id="copyDonateBtc">Kopírovat BTC adresu</button></div></div></div></div>`;
   }
 
   /* ---------- exporty CSV ---------- */
@@ -863,10 +871,11 @@
     if (t.id === 'reportBug') return openExternal(bugReportUrl());
     if (t.id === 'updNow') { await checkUpdate(true); return render(); }
     if (t.id === 'updLater') { (state.update = state.update || {}).dismissed = state.update.latest; await save(); return showUpdate(); }
-    if (t.id === 'copyDonate') {
+    if (t.id === 'copyDonate' || t.id === 'copyDonateBtc') {
+      const addr = t.id === 'copyDonateBtc' ? donateBtc() : donateAddr();
       let ok = false;
-      try { await navigator.clipboard.writeText(donateAddr()); ok = true; } catch (e) {
-        const ta = document.createElement('textarea'); ta.value = donateAddr(); document.body.appendChild(ta); ta.select();
+      try { await navigator.clipboard.writeText(addr); ok = true; } catch (e) {
+        const ta = document.createElement('textarea'); ta.value = addr; document.body.appendChild(ta); ta.select();
         try { ok = document.execCommand('copy'); } catch (e2) { /* nic */ } ta.remove();
       }
       return status(ok ? 'Adresa zkopírována – díky!' : 'Kopírování nejde, označ adresu ručně.', !ok);

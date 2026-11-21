@@ -1,4 +1,4 @@
-Krypto sprava 0.4.4 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
+Krypto sprava 0.4.5 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
 =============================================================================
 
 Windows
@@ -33,7 +33,7 @@ PDF zprava: Export -> PDF otevre zpravu v prohlizeci -> "Ulozit jako PDF" (vsech
 
 Android
 -------
-BUILD-APK.bat -> files\KryptoSprava-0.4.4-debug.apk (Gradle wrapper se zkopiruje ze slozky
+BUILD-APK.bat -> files\KryptoSprava-0.4.5-debug.apk (Gradle wrapper se zkopiruje ze slozky
 v promenne GRADLE_WRAPPER_FROM, SDK z %LOCALAPPDATA%\Android\Sdk, platforma 35). Jednodussi: GitHub Actions.
 Exporty CSV z telefonu jdou do Stazene soubory/Krypto-sprava.
 Data PC a telefonu jsou oddelena - prenos: Synchronizace (nize) nebo Nastaveni -> Zaloha (JSON) -> Obnovit.
@@ -102,6 +102,7 @@ Podrobny navod je v souboru NAVOD.pdf (ve slozce s appkou).
 
 Podpora vyvoje
 --------------
-Appka je zdarma. Pokud ti pomaha, muzes autorovi poslat libovolnou castku ADA (Cardano):
-addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2svjfeen36xjkxhgjqp6nlxa
-(adresa je i v appce: Nastaveni -> Podporit vyvoj)
+Appka je zdarma. Pokud ti pomaha, muzes autorovi poslat libovolnou castku ADA nebo BTC:
+ADA (Cardano): addr1q9fwf8s2mp3tea20l0p483staa2f9x4qk7l9zjqm8ka40gyweffndrftjdln9tk9nmmgwx0rys2svjfeen36xjkxhgjqp6nlxa
+BTC (Bitcoin):  bc1qhxh9aucufsmh9f7qjwhvrkl9jn3umgzsw7dnwn
+(adresy i s QR kodem jsou v appce: Nastaveni -> Podporit vyvoj)
