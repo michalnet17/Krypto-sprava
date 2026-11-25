@@ -3,7 +3,7 @@ Krypto sprava 0.4.11 - prehled ADA, BTC, ETH, SOL a dalsich, staking a dane (CZ)
 
 Windows
 -------
-1) Spust START-PC.bat (potrebuje Python, bez dalsich knihoven).
+1) Spust START-PC.bat. Python je pribaleny ve slozce python - nic se neinstaluje.
    Zastupce s ikonou na plochu: spust jednou ZASTUPCE-NA-PLOSE.bat.
    Otevre se prohlizec na http://127.0.0.1:8765. Okno s konzoli nech otevrene.
 2) Nastaveni -> zadej stake adresu/adresy (stake1...) -> Ulozit adresy.

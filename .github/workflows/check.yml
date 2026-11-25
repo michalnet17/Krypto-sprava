@@ -1,4 +1,4 @@
-# Kontrola sestavení APK na vedlejších větvích (nic se nevydává).
+# Kontroly na vedlejších větvích (nic se nevydává): sestavení APK a test Windows balíčku s přibaleným Pythonem.
 name: Check
 on:
   push:
@@ -19,3 +19,37 @@ jobs:
         run: |
           mkdir -p android/app/src/main/assets && cp -r web android/app/src/main/assets/web
           gradle -p android --no-daemon :app:assembleDebug
+  pc-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/package.sh
+      - uses: actions/upload-artifact@v4
+        with: { name: win-zip, path: dist/*-Windows.zip }
+  win-test:
+    needs: pc-zip
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: win-zip }
+      - name: Spuštění s přibaleným Pythonem (bez systémového Pythonu)
+        shell: pwsh
+        run: |
+          Expand-Archive (Get-ChildItem *-Windows.zip)[0] -DestinationPath "app test (1)"
+          $d = "app test (1)\Krypto-sprava"
+          if (-not (Test-Path "$d\python\python.exe")) { throw "chybí python\python.exe" }
+          $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'Python|hostedtoolcache' }) -join ';'
+          $env:BROWSER = 'none'
+          $p = Start-Process -FilePath "$d\START-PC.bat" -WorkingDirectory $d -PassThru -RedirectStandardOutput out.txt -RedirectStandardError err.txt
+          Start-Sleep 6
+          Get-Content out.txt, err.txt
+          $ping = Invoke-RestMethod http://127.0.0.1:8765/api/ping
+          $ping | ConvertTo-Json
+          if (-not $ping.ok) { throw "ping selhal" }
+          $body = @{ method = 'GET'; url = 'https://api.github.com/repos/michalnet17/krypto-sprava' } | ConvertTo-Json
+          $r = Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8765/api/http -Body $body -ContentType 'application/json'
+          "HTTPS přes server: ok=$($r.ok) status=$($r.status)"
+          if (-not $r.ok -or $r.status -ne 200) { throw "HTTPS přes přibalený Python nefunguje" }
+          $s = Invoke-WebRequest http://127.0.0.1:8765/ -UseBasicParsing
+          if ($s.StatusCode -ne 200 -or $s.Content -notmatch 'app.js') { throw "stránka appky se nenačetla" }
+          "OK: appka běží s přibaleným Pythonem $($ping.python), SSL: $($ping.ssl)"

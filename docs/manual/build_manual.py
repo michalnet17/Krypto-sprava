@@ -15,10 +15,10 @@ INSTALL = {
  'Windows': '''
 <h2>2. Instalace a spuštění – Windows</h2>
 <ol>
-<li><b>Python 3</b> – stáhni z <b>python.org</b> → Downloads → Windows. Při instalaci <b>zaškrtni „Add python.exe to PATH“</b>. (Nic dalšího se instalovat nemusí.)</li>
-<li>Rozbal <code>Krypto-sprava-%s-Windows.zip</code> kamkoli (např. Dokumenty).</li>
+<li>Rozbal <code>Krypto-sprava-%s-Windows.zip</code> kamkoli (např. Dokumenty). <b>Nic se neinstaluje</b> – Python je přibalený ve složce <code>python</code>.</li>
 <li>Dvojklik na <b>START-PC.bat</b>. Otevře se černé okno (server) a prohlížeč s appkou na <code>http://127.0.0.1:8765</code>.</li>
 <li><b>Černé okno nech otevřené</b>, dokud appku používáš. Ukončení: zavři okno.</li>
+<li>Zástupce s ikonou na plochu: jednou spusť <b>ZASTUPCE-NA-PLOSE.bat</b>.</li>
 </ol>
 <p class="tip">Windows může při prvním spuštění zobrazit „Systém Windows ochránil počítač“ → <i>Další informace → Přesto spustit</i>. Appka je jen skript, nic neinstaluje.</p>
 ''' % VERSION,
@@ -160,7 +160,7 @@ COMMON = '''
 <h2>9. Řešení problémů</h2>
 <table>
 <tr><th>Problém</th><th>Řešení</th></tr>
-<tr><td>„Nenašel jsem Python“</td><td>Nainstaluj Python 3 (viz kapitola 2).</td></tr>
+<tr><td>„Nenašel jsem Python“</td><td>Windows: chybí složka <code>python</code> – rozbal znovu celý zip. Linux/Mac: nainstaluj Python 3 (viz kapitola 2).</td></tr>
 <tr><td>Port 8765 obsazený / „běží stará verze serveru“</td><td>Zavři všechna okna / terminály appky a spusť ji znovu. Novější verze starou ukončí sama.</td></tr>
 <tr><td>Po aktualizaci se nic nezměnilo</td><td>V prohlížeči <b>Ctrl+F5</b> (Mac: Cmd+Shift+R).</td></tr>
 <tr><td>Chyba SSL / certifikát</td><td>Appka zkusí záložní cestu přes systémový curl. Pomůže i aktualizace Pythonu.</td></tr>

@@ -24,7 +24,7 @@ Přehled kryptoměn, stakingu a **českých daní** na jednom místě – offlin
 | macOS | `Krypto-sprava-X.Y.Z-Mac.zip` | rozbal → `start-mac.command` |
 | Android | `KryptoSprava-X.Y.Z.apk` | nainstaluj (povol neznámé zdroje) |
 
-PC verze potřebuje jen **Python 3** (bez dalších knihoven). Podrobný návod je v balíčku jako `NAVOD.pdf`.
+Windows verze má Python přibalený – nic se neinstaluje, stačí rozbalit a spustit. Linux/Mac verze potřebuje **Python 3** (bez dalších knihoven). Podrobný návod je v balíčku jako `NAVOD.pdf`.
 
 Appka sama upozorní, když vyjde nová verze.
 
